@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from datetime import datetime as dt
 
 def Make_Video_batch(tmax=50,
     px=32,
@@ -88,8 +90,34 @@ def play_video(vid_batch, j=0):
         ax.imshow(vid_batch[j,i,:,:])
         plt.pause(0.1)
 
+def make_checkpoint_folder(base_dir=None):
+
+    # make a "root" dir to store all checkpoints
+    if base_dir is None:
+        homedir = os.getenv("HOME")
+        base_dir = homedir+"/GPVAE_checkpoints/"
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
+    
+    # now make a unique folder inside the root for this experiments
+    filenum = str(len(os.listdir(base_dir))) + ":__on__"
+
+    T = dt.now()
+
+    filetime = str(T.day)+"_"+str(T.month)+"_"+str(T.year) + "__at__"
+    filetime += str(T.hour)+":"+str(T.minute)+":"+str(T.second)
+
+    checkpoint_folder = base_dir + filenum + filetime
+
+    if not os.path.exists(checkpoint_folder):
+            os.makedirs(checkpoint_folder)
+    
+    return checkpoint_folder + "/"
+
 
 if __name__=="__main__":
     A = Make_Video_batch()
     play_video(A)
+
+    # print(make_checkpoint_folder())
 
