@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.ops import math_ops as tfmath_ops
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -89,6 +90,46 @@ def play_video(vid_batch, j=0):
         ax.clear()
         ax.imshow(vid_batch[j,i,:,:])
         plt.pause(0.1)
+
+def build_video_batch_graph(tmax=50,
+    px=32,
+    py=32,
+    lt=5,
+    batch=1,
+    seed=1,
+    r=3,
+    dtype=tf.float32):
+
+    rr = r*r
+
+    K = tf.range(tmax)
+    K = (K.rehspape((tmax, 1)) - K.rehspape((1, tmax)))**2
+    K = tf.exp(K*(-0.5/lt**2))
+    chol_K = tf.cholesky(K)
+
+    ran_Z = tf.random.normal((2*tmax, batch))
+
+    paths = tf.matmul(chol_K, ran_Z)
+    paths = tf.reshape(paths, (2, tmax, batch))
+    paths = tf.transpose(paths, (2,1,0))
+
+    paths[:,:,0] = paths[:,:,0]*0.2*px + 0.5*px
+    paths[:,:,1] = paths{:,:,1]*0.2*py + 0.5*py
+
+    vid_batch = tf.zeros((batch, tmax, px, py))
+
+    for b in range(batch):
+        for t in range(tmax):
+            lx = tf.reshape((tf.range(px) - paths[b,t,0])**2, (px, 1))
+            ly = tf.reshape((tf.range(py) - paths[b,t,1])**2, (1, py))
+            vid_batch[b,t,:,:] = lx + ly < rr
+
+    vid_batch = tfmath_ops.cast(vid_batch, dtype=dtype)
+
+    return vid_batch
+
+
+
 
 def make_checkpoint_folder(base_dir=None):
 

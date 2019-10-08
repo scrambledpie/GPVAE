@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.python.ops import math_ops as tfmath_ops
 import numpy as np
 from utils import Make_Video_batch, make_checkpoint_folder
 import sys
@@ -19,7 +20,7 @@ def gauss_cross_entropy(mu1, var1, mu2, var2):
         cross_entropy: (batch, tmax, 2) tf variable
     """
 
-    term0 = 1.8378770664093453 # log(2*pi)
+    term0 = 2.8378770664093453 # log(2*pi*e)
     term1 = 2*tf.log(var2)
     term2 = (mu1**2 + var1 - 2*mu1*mu2 + mu2**2) / var2
 
@@ -243,7 +244,7 @@ def build_elbo_graph(vid_batch, beta, lt=5):
 
     return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid_batch_logits
 
-def build_np_elbo_graph(vid_batch, beta, context=0.5):
+def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     """
     Takes placeholder inputs and build complete elbo graph
     args:
@@ -256,10 +257,51 @@ def build_np_elbo_graph(vid_batch, beta, context=0.5):
         elbo: tf variable (batch)
     """
 
+    batch, tmax, px, py = [int(a) for a in vid_batch.get_shape()]
+
+
+    # Get full approximate posterior q(z | x_1:n, y_1:n)
     qnet_mu, qnet_var = build_MLP_inference_graph(vid_batch)
+    _, full_p_mu, full_p_var = build_gp_lhood_and_post_graph(qnet_mu, qnet_var, lt=lt)
 
-    mask = 
 
+    # Randomly sample context points, make masks
+    random_tensor = tf.random.uniform([batch, tmax, 1], seed=seed, dtype=qnet_var.dtype)
+    context_mask = random_tensor <= context_prob
+    context_mask = tfmath_ops.cast(context_mask, qnet_mu.dtype)# (batch, tmax, 2)
+    context_mask2 = tf.concat([context_mask, context_mask], 2) # (batch, tmax, 2)
+
+
+    # Get context approx posterior q(z| x_1:m, y_1:m) where m<n are context pnts
+    # (set var of targets to huuuuge, i.e. unknown)
+    con_qnet_var = qnet_var + (1 - context_mask2)*10000
+    _, con_p_mu, con_p_var = build_gp_lhood_and_post_graph(qnet_mu, con_qnet_var, lt=lt)
+
+
+    # Now we can compute the KL term
+    kl_term1 = gauss_cross_entropy(full_p_mu, full_p_var, con_p_mu, con_p_var) #(batch, tmax, 2)
+    kl_term2 = 0.5*tf.log(full_p_var) + 2.8378770664093453 # log(2*pi*e)
+    np_prior_kl = tf.reduce_sum(kl_term1 - kl_term2, (1,2)) # (batch)
+
+
+    # recon error with repam trick, at the end mask out recon for context pnts
+    epsilon = tf.random.normal(shape=(batch, tmax, 2))
+    latent_samples = full_p_mu + epsilon * tf.sqrt(full_p_var)
+    pred_vid_batch_logits = build_MLP_decoder_graph(latent_samples, px, py)
+    recon_err = tf.nn.sigmoid_cross_entropy_with_logits(labels=vid_batch, 
+                                                        logits=pred_vid_batch_logits)
+    elbo_recon = tf.reduce_sum(-recon_err, (2,3)) # (batch, tmax)
+
+    target_frames_mask = 1-tf.reshape(context_mask, (batch, tmax))
+    tar_elbo_recon = elbo_recon*target_frames_mask
+    tar_elbo_recon = tf.reduce_sum(tar_elbo_recon, (1)) # (batch)
+
+
+    # put it all together and return!
+    np_elbo = tar_elbo_recon + beta * np_prior_kl # (batch)
+
+
+    return np_prior_kl, tar_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid_batch_logits, con_p_mu, con_p_var
 
 
 
@@ -343,7 +385,8 @@ if __name__=="__main__":
         vid_batch = tf.placeholder(shape=(batch, tmax, px, py), dtype=tf.float32)
 
         # make the graph and get aaallll the intermediate values
-        p_kl, recon, elbo, q_m, q_v, p_m, p_v, _ = build_elbo_graph(vid_batch, beta, lt=lt)
+        # p_kl, recon, elbo, q_m, q_v, p_m, p_v, _ = build_elbo_graph(vid_batch, beta, lt=lt)
+        p_kl, recon, elbo, q_m, q_v, p_m, p_v, _, _, _ = build_np_elbo_graph(vid_batch, beta, lt=lt)
 
         # the actual loss functions!
         av_p_kl  = tf.reduce_mean(p_kl)
