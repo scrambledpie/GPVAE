@@ -243,7 +243,7 @@ def build_elbo_graph(vid_batch, beta, lt=5):
 
     return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid_batch_logits
 
-def build_np_elbo_graph(vid_batch, beta):
+def build_np_elbo_graph(vid_batch, beta, context=0.5):
     """
     Takes placeholder inputs and build complete elbo graph
     args:
@@ -255,6 +255,12 @@ def build_np_elbo_graph(vid_batch, beta):
         recon_err: tf variabel (batch)
         elbo: tf variable (batch)
     """
+
+    qnet_mu, qnet_var = build_MLP_inference_graph(vid_batch)
+
+    mask = 
+
+
 
 
 if __name__=="__main__0":
