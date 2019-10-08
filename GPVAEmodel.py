@@ -1,8 +1,9 @@
 import tensorflow as tf
 from tensorflow.python.ops import math_ops as tfmath_ops
 import numpy as np
-from utils import Make_Video_batch, make_checkpoint_folder
+from utils import Make_Video_batch, make_checkpoint_folder, build_video_batch_graph, plot_latents, MSE_rotation
 import sys
+import matplotlib.pyplot as plt
 
 
 def gauss_cross_entropy(mu1, var1, mu2, var2):
@@ -145,10 +146,10 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
     # all kernel matrices can be computed once and stored as constants
     k_mat = np.arange(tmax)
     k_mat = np.exp(( (k_mat.reshape(-1,1) - k_mat.reshape(1,-1))**2)*(-0.5/lt**2))
-    k_jit = k_mat + 0.0001*np.eye(tmax)
+
+    k_jit = k_mat + 0.01*np.eye(tmax)
 
     k_mat = k_mat.reshape((1, tmax, tmax))
-
     k_mat = np.tile(k_mat, [batch, 1, 1])
     K = tf.constant(k_mat, dtype=tf.float32) # shape: (batch, tmax, tmax)
     eK = tf.reshape(K, (batch, tmax, 1, tmax)) # need this later for post_var
@@ -240,9 +241,12 @@ def build_elbo_graph(vid_batch, beta, lt=5):
     elbo_recon = tf.reduce_sum(-recon_err, (1,2,3))
 
     # Finally put them together to get elbo!
-    elbo = elbo_recon + beta*elbo_prior_kl
+    elbo = beta*elbo_prior_kl #+ elbo_recon
 
-    return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid_batch_logits
+    # get the reconstruction image for plotting
+    pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
+
+    return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid
 
 def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     """
@@ -300,8 +304,9 @@ def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     # put it all together and return!
     np_elbo = tar_elbo_recon + beta * np_prior_kl # (batch)
 
+    pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
 
-    return np_prior_kl, tar_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid_batch_logits, con_p_mu, con_p_var
+    return np_prior_kl, tar_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid, con_p_mu, con_p_var
 
 
 
@@ -358,11 +363,18 @@ if __name__=="__main__":
 
     # Data settings
     batch = 45
-    tmax = 8
+    tmax = 30
     px = 32
     py = 32
     r = 3
-    lt = 5
+    lt = 10
+
+
+    
+    plt.ion()
+    fig, ax = plt.subplots(4,3, figsize=(10,10))
+    plt.show()
+    plt.pause(0.01)
 
     # alias the data generator
     Make_data = lambda seed: Make_Video_batch(tmax=tmax, 
@@ -371,10 +383,16 @@ if __name__=="__main__":
                                               lt=lt, 
                                               batch=batch, 
                                               r=r, 
-                                              seed=seed)
+                                              seed=seed)[1]
 
     # make a test batch
-    Test_Data = Make_data(0)
+    Test_traj, Test_Data = Make_Video_batch(tmax=tmax, 
+                                            px=px, 
+                                            py=py,
+                                            lt=lt, 
+                                            batch=batch, 
+                                            r=r, 
+                                            seed=0)
 
     # make sure everything is created in the same graph!
     graph = tf.Graph()
@@ -382,11 +400,12 @@ if __name__=="__main__":
 
         # placeholders to start the graph
         beta = tf.placeholder(dtype=tf.float32, shape=())
-        vid_batch = tf.placeholder(shape=(batch, tmax, px, py), dtype=tf.float32)
+        # vid_batch = tf.placeholder(shape=(batch, tmax, px, py), dtype=tf.float32)
+        vid_batch = build_video_batch_graph(batch=batch, tmax=tmax, px=px, py=py)
 
         # make the graph and get aaallll the intermediate values
-        # p_kl, recon, elbo, q_m, q_v, p_m, p_v, _ = build_elbo_graph(vid_batch, beta, lt=lt)
-        p_kl, recon, elbo, q_m, q_v, p_m, p_v, _, _, _ = build_np_elbo_graph(vid_batch, beta, lt=lt)
+        p_kl, recon, elbo, q_m, q_v, p_m, p_v, pred_vid = build_elbo_graph(vid_batch, beta, lt=lt)
+        # p_kl, recon, elbo, q_m, q_v, p_m, p_v, pred_vid, _, _ = build_np_elbo_graph(vid_batch, beta, lt=lt)
 
         # the actual loss functions!
         av_p_kl  = tf.reduce_mean(p_kl)
@@ -427,7 +446,7 @@ if __name__=="__main__":
                 print("\n\nInitialised Model")
 
             # start training that elbo!
-            for t in range(1, 200):
+            for t in range(1, 1000):
                 
                 # prior KL annealing factor
                 beta_t = 1 #+ (beta_0-1) * np.exp(t/2000)
@@ -440,7 +459,18 @@ if __name__=="__main__":
                 test_elbo, g_s = sess.run([av_elbo, global_step], {vid_batch:Test_Data, beta:1.0})
                 print(str(g_s)+": elbo "+str(test_elbo))
 
+                if g_s%10==1:
+                    reconpath, reconvid = sess.run([p_m, pred_vid], {vid_batch:Test_Data, beta:1})
+                    reconpath, _, _ = MSE_rotation(reconpath, Test_traj)
+                    _ = plot_latents(Test_Data, Test_traj, reconvid, reconpath, ax=ax)
+                    plt.draw()
+                    # plt.show()
+                    plt.pause(0.01)
+                    
+                    
+                    
+
                 # Checkpoint
-                if g_s%100==1:
+                if g_s%1000==1:
                     saver.save(sess, chkpnt_dir+"model", global_step=g_s)
                     print("\n\nModel Saved: "+ chkpnt_dir +"\n\n")
