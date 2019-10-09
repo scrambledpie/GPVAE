@@ -6,6 +6,7 @@ import os
 from datetime import datetime as dt
 import sys
 from matplotlib.patches import Ellipse
+import shutil
 
 def Make_path_batch(
     batch=40,
@@ -140,7 +141,7 @@ def build_video_batch_graph(tmax=50,
 
 
     K = tf.exp(K*ilt) + 0.00001*tf.eye(tmax, dtype=dtype)
-    chol_K = tf.cholesky(K)
+    chol_K = tf.linalg.cholesky(K)
 
     ran_Z = tf.random.normal((tmax, 2*batch))
 
@@ -342,7 +343,7 @@ def make_checkpoint_folder(base_dir=None):
     # make a "root" dir to store all checkpoints
     if base_dir is None:
         homedir = os.getenv("HOME")
-        base_dir = homedir+"/GPVAE_checkpoints/"
+        base_dir = homedir+"/GPVAE_checkpoints/" 
         if not os.path.exists(base_dir):
             os.makedirs(base_dir)
     
@@ -358,11 +359,22 @@ def make_checkpoint_folder(base_dir=None):
 
     if not os.path.exists(checkpoint_folder):
             os.makedirs(checkpoint_folder)
+            src_folder = checkpoint_folder + "/sourcecode/"
+            os.makedirs(src_folder)
+            old_src_dir = homedir + "/GPVAE/"
+            src_files = os.listdir(old_src_dir)
+            print("\n\nCopying source Code to "+src_folder)
+            for f in src_files:
+                if ".py" in f:
+                    src_file = old_src_dir + f
+                    shutil.copy2(src_file, src_folder)
+                    print(src_file)
+    print("\n")
     
     return checkpoint_folder + "/"
 
 
-if __name__=="__main__":
+if __name__=="__main__0":
 
     traj, vid_batch = Make_Video_batch()
 
@@ -391,21 +403,21 @@ if __name__=="__main__":
     plt.show()
     fig = plt.gcf()
 
-if __name__=="__main__0":
+if __name__=="__main__":
     # A = Make_Video_batch()
 
-    # print(make_checkpoint_folder())
+    make_checkpoint_folder()
 
-    graph = tf.Graph()
-    with graph.as_default():
+    # graph = tf.Graph()
+    # with graph.as_default():
 
-        vid_g = build_video_batch_graph(batch=10)
+    #     vid_g = build_video_batch_graph(batch=10)
 
-        with tf.Session() as sess:
-            for i in range(100):
-                A = sess.run(vid_g)
-                # A = Make_Video_batch(batch=10)
-                print(i)
+    #     with tf.Session() as sess:
+    #         for i in range(1):
+    #             # A = sess.run(vid_g)
+    # A = Make_Video_batch(batch=10)
+                # print(i)
             
-    print(A.shape)
-    play_video(A)
+    # print(A.shape)
+    # play_video(A)

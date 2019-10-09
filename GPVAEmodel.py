@@ -23,7 +23,7 @@ def gauss_cross_entropy(mu1, var1, mu2, var2):
     """
 
     term0 = 1.8378770664093453 # log(2*pi)
-    term1 = 2*tf.log(var2)
+    term1 = tf.log(var2)
     term2 = (var1 + mu1**2 - 2*mu1*mu2 + mu2**2) / var2
 
     cross_entropy = -0.5*( term0 + term1 + term2 )
@@ -140,21 +140,20 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
     batch = int(batch)
     tmax = int(tmax)
 
-    top_var = tf.constant(10000, dtype=latent_mean.dtype)
+    lhood_pi_term = tf.constant(np.log(2*np.pi) * 2 * tmax, dtype=latent_mean.dtype)
 
     # rename and reshape latents! (batch, tmax, 1)
     lm_x = tf.reshape(latent_mean[:,:,0], (batch, tmax, 1))
-    lv_x = tf.math.minimum(latent_var[:,:,0], top_var) # (batch, tmax)
+    lv_x = latent_var[:,:,0] # (batch, tmax)
 
     lm_y = tf.reshape(latent_mean[:,:,1], (batch, tmax, 1))
-    # lv_y = latent_var[:,:,1] # (batch, tmax)
-    lv_y = tf.math.minimum(latent_var[:,:,1], top_var)
+    lv_y = latent_var[:,:,1] # (batch, tmax)
 
     # all kernel matrices can be computed once and stored as constants
     k_mat = np.arange(tmax)
     k_mat = np.exp(( (k_mat.reshape(-1,1) - k_mat.reshape(1,-1))**2)*(-0.5/lt**2))
 
-    k_jit = k_mat + 0.01*np.eye(tmax)
+    k_jit = k_mat #+ 0.01*np.eye(tmax)
 
     k_mat = k_mat.reshape((1, tmax, tmax))
     k_mat = np.tile(k_mat, [batch, 1, 1])
@@ -167,8 +166,8 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
     KX = Kj + tf.matrix_diag(lv_x) # (batch, tmax, tmax)
     KY = Kj + tf.matrix_diag(lv_y)
 
-    chol_X = tf.cholesky(KX) # (batch, tmax, tmax)
-    chol_Y = tf.cholesky(KY)
+    chol_X = tf.linalg.cholesky(KX) # (batch, tmax, tmax)
+    chol_Y = tf.linalg.cholesky(KY)
 
     # print(tf.matrix_diag(lv_x[:,:,0]).get_shape())
     # import sys; sys.exit()
@@ -189,7 +188,7 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
 
 
     ###### IS THIS CORRECT???!?!?!?!! ADDING DETS?!?!?! #############
-    gp_lhood = -0.5*( logdet_Kx + logdet_Ky + x_iK_x + y_iK_y ) # (batch,)
+    gp_lhood = -0.5*( logdet_Kx + logdet_Ky + x_iK_x + y_iK_y + lhood_pi_term ) # (batch,)
 
 
     # Now compute posterior mean
@@ -236,8 +235,10 @@ def build_elbo_graph(vid_batch, beta, lt=5):
     # first encode images
     qnet_mean, qnet_var = build_MLP_inference_graph(vid_batch)
 
-    top_var = tf.constant(1000000, dtype=vid_batch.dtype)
+    top_var = tf.constant(10000, dtype=vid_batch.dtype)
+    # bottom_var = tf.constant(1/1000, dtype=vid_batch.dtype)
 
+    # qnet_var = tf.math.maximum(qnet_var, bottom_var)
     qnet_var = tf.math.minimum(qnet_var, top_var)
 
     # prior KL = gp_lhood + cross_entropy(gp_post, qnet)
@@ -256,18 +257,19 @@ def build_elbo_graph(vid_batch, beta, lt=5):
     elbo_recon = tf.reduce_sum(-recon_err, (1,2,3))
 
     # Finally put them together to get elbo!
-    # elbo = elbo_recon + beta*elbo_prior_kl
-    elbo = elbo_prior_kl
+    elbo = elbo_recon + beta*elbo_prior_kl
+    # elbo = elbo_prior_kl
+    # elbo = elbo_recon
 
     # get the reconstruction image for plotting
     pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
 
-    return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid
+    return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid, gp_lhood, ce_term
 
 
 def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     """
-    Takes placeholder inputs and build complete elbo graph
+    Takes tf variables as inputs and build complete Neural Process elbo graph
     args:
         vid_batch: (batch, tmax, px, py) tf placeholder
         beta: shape=(1) or (), tf placeholder 
@@ -278,35 +280,51 @@ def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
         elbo: tf variable (batch)
     """
 
+    # Nueral Process ELBO q(z|x_1:n), qstar is a NN encoder
+    # elbo(x_1:n) = E_q[ log p(x_1:m|z) + log q(z|x_1:m) - log q(z|x_1:n) ] 
+    # = E_q[ log p(x_1:m|z) - log qstar(x_m+1:n)] - log Z(x_1:m)  + log Z(1:n)
+    # = reconstruction term - cross entropy term  - norm const(m) + norm const(n) 
 
     batch, tmax, px, py = [int(a) for a in vid_batch.get_shape()]
 
-
-    # Get full approximate posterior q(z | x_1:n, y_1:n)
+    # encode all video frames and put a cap on the variance
     qnet_mu, qnet_var = build_MLP_inference_graph(vid_batch)
-    _, full_p_mu, full_p_var = build_gp_lhood_and_post_graph(qnet_mu, qnet_var, lt=lt)
+
+    top_var = tf.constant(10000, dtype=vid_batch.dtype)
+    qnet_var = tf.math.minimum(qnet_var, top_var)
+    # bottom_var = tf.constant(1/1000, dtype=vid_batch.dtype)
+    # qnet_var = tf.math.maximum(qnet_var, bottom_var)
+
+    # Get full approximate posterior q(z | x_1:n, y_1:n) and log Z(x_1:n) 
+    full_gplhood, full_p_mu, full_p_var = build_gp_lhood_and_post_graph(qnet_mu, qnet_var, lt=lt)
 
 
     # Randomly sample context points, make masks
     random_tensor = tf.random.uniform([batch, tmax, 1], seed=seed, dtype=qnet_var.dtype)
-    context_mask = random_tensor <= context_prob
-    context_mask = tfmath_ops.cast(context_mask, qnet_mu.dtype)# (batch, tmax, 2)
-    context_mask2 = tf.concat([context_mask, context_mask], 2) # (batch, tmax, 2)
+    con_mask = random_tensor <= context_prob
+    con_mask = tfmath_ops.cast(con_mask, qnet_mu.dtype)# (batch, tmax, 1)
+    tar_mask = tf.reshape(1-con_mask, (batch, tmax))
+    con_mask2 = tf.concat([con_mask, con_mask], 2) # (batch, tmax, 2)
+    tar_mask2 = (1-con_mask2)
 
 
-    # Get context approx posterior q(z| x_1:m, y_1:m) where m<n are context pnts
+    # Prior KL term = -E_q[ log qnet(x_m+1:n) ] + log Z(x_1:n) - log Z(x_1:m)
+    # Get context approx posterior q(z| x_1:m, y_1:m) and log Z(x_1:m)
     # (set var of targets to huuuuge, i.e. unknown)
-    con_qnet_var = qnet_var + (1 - context_mask2)*10000
-    _, con_p_mu, con_p_var = build_gp_lhood_and_post_graph(qnet_mu, con_qnet_var, lt=lt)
+    con_qnet_var = qnet_var + tar_mask2*10000
+    con_gp_lhood, con_p_mu, con_p_var = build_gp_lhood_and_post_graph(qnet_mu, con_qnet_var, lt=lt)
 
 
-    # Now we can compute the KL term
-    kl_term1 = gauss_cross_entropy(full_p_mu, full_p_var, con_p_mu, con_p_var) #(batch, tmax, 2)
-    kl_term2 = 0.5*tf.log(full_p_var) + 2.8378770664093453 # log(2*pi*e)
-    np_prior_kl = tf.reduce_sum(kl_term1 - kl_term2, (1,2)) # (batch)
+    # Next compute E_q[ log qnet(x_m+1:n) ]
+    full_ce_term = gauss_cross_entropy(full_p_mu, full_p_var, qnet_mu, qnet_var) #(batch, tmax, 2)
+    tar_ce_term = tf.reduce_sum( tar_mask2*full_ce_term, (1,2))
+    
+
+    # Prior KL term = -E_q[ log qnet(x_m+1:n) ] + log Z(x_1:n) - log Z(x_1:m)
+    np_prior_kl = - tar_ce_term + full_gplhood - con_gp_lhood 
 
 
-    # recon error with repam trick, at the end mask out recon for context pnts
+    # Recon error with repam trick E_q[ log p(x_1:n| z)]
     epsilon = tf.random.normal(shape=(batch, tmax, 2))
     latent_samples = full_p_mu + epsilon * tf.sqrt(full_p_var)
     pred_vid_batch_logits = build_MLP_decoder_graph(latent_samples, px, py)
@@ -314,17 +332,16 @@ def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
                                                         logits=pred_vid_batch_logits)
     elbo_recon = tf.reduce_sum(-recon_err, (2,3)) # (batch, tmax)
 
-    target_frames_mask = 1-tf.reshape(context_mask, (batch, tmax))
-    tar_elbo_recon = elbo_recon*target_frames_mask
-    tar_elbo_recon = tf.reduce_sum(tar_elbo_recon, (1)) # (batch)
+    # Get the recon fro target frames only E_q[ log p(x_1:m| z)]
+    np_elbo_recon = tf.reduce_sum(elbo_recon*tar_mask, (1)) # (batch, tmax) -> (batch)
 
 
     # put it all together and return!
-    np_elbo = tar_elbo_recon + beta * np_prior_kl # (batch)
+    np_elbo = np_elbo_recon + beta * np_prior_kl # (batch)
 
     pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
 
-    return np_prior_kl, tar_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid, con_p_mu, con_p_var
+    return np_prior_kl, np_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid, con_p_mu, con_p_var
 
 
 
@@ -380,7 +397,7 @@ if __name__=="__main__0":
 if __name__=="__main__":
 
     # Data settings
-    batch = 30
+    batch = 35
     tmax = 30
     px = 32
     py = 32
@@ -417,23 +434,28 @@ if __name__=="__main__":
     with graph.as_default():
 
         # placeholders to start the graph
-        beta = tf.placeholder(dtype=tf.float32, shape=())
+        beta = tf.compat.v1.placeholder(dtype=tf.float32, shape=())
         # vid_batch = tf.placeholder(shape=(batch, tmax, px, py), dtype=tf.float32)
         vid_batch = build_video_batch_graph(batch=batch, tmax=tmax, px=px, py=py)
 
         # make the graph and get aaallll the intermediate values
-        p_kl, recon, elbo, q_m, q_v, p_m, p_v, pred_vid = build_elbo_graph(vid_batch, beta, lt=lt)
+        # p_kl, recon, elbo, q_m, q_v, p_m, p_v,\
+            #  pred_vid, gpl, ce = build_elbo_graph(vid_batch, beta, lt=lt)
+        p_kl, recon, elbo, q_m, q_v, p_m, p_v,\
+             pred_vid, gpl, ce = build_np_elbo_graph(vid_batch, beta, lt=lt)
         # p_kl, recon, elbo, q_m, q_v, p_m, p_v, pred_vid, _, _ = build_np_elbo_graph(vid_batch, beta, lt=lt)
 
         # the actual loss functions!
-        av_p_kl  = tf.reduce_mean(p_kl)
+        av_gpl   = tf.reduce_mean(gpl)
+        av_ce    = tf.reduce_mean(ce)
+        av_pkl  = tf.reduce_mean(p_kl)
         av_recon = tf.reduce_mean(recon)
         av_elbo  = tf.reduce_mean(elbo)
 
 
         # add optimizer ops to graph (minimizing neg elbo!), print out trainable vars
         global_step = tf.Variable(0, name='global_step',trainable=False)
-        optimizer  = tf.train.AdamOptimizer()
+        optimizer  = tf.compat.v1.train.AdamOptimizer()
         train_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
         optim_step = optimizer.minimize(loss=-av_elbo, 
                                         var_list=train_vars,
@@ -447,8 +469,8 @@ if __name__=="__main__":
 
         # Make a folder to save everything
         chkpnt_dir = make_checkpoint_folder()
-        # chkpnt_dir = "/Users/academic/GPVAE_checkpoints/67:__on__8_10_2019__at__23:21:17/"
-        saver = tf.train.Saver()
+        # chkpnt_dir = "/home/michael/GPVAE_checkpoints/51:__on__9_10_2019__at__9:12:46/"
+        saver = tf.compat.v1.train.Saver()
         print("\nCheckpoint Directory:\n"+str(chkpnt_dir)+"\n")
         
         beta_0 = 100
@@ -473,13 +495,19 @@ if __name__=="__main__":
                 beta_t = 1 #+ (beta_0-1) * np.exp(t/2000)
 
                 # Train, do an optim step
-                Data = Make_data(t)
-                _ = sess.run(optim_step, {vid_batch:Data, beta:beta_t})
+                # Data = Make_data(t)
+                _ = sess.run(optim_step, {beta:beta_t})
 
                 # Test, don't do an optim step
-                test_elbo, g_s = sess.run([av_elbo, global_step], {vid_batch:Test_Data, beta:1.0})
-                test_qv, test_pv = sess.run([q_v, p_v], {vid_batch:Test_Data, beta:1.0})
-                print(str(g_s)+": elbo "+str(test_elbo), ", qvar range:",str(test_pv.max()),str(test_qv.max())  )
+                test_elbo, g_s, e_rec, e_pkl, e_gpl, e_ce\
+                     = sess.run([av_elbo, global_step, av_recon, av_pkl, av_gpl, av_ce], \
+                         {vid_batch:Test_Data, beta:1.0})
+
+                test_qv, test_pv, test_pm, test_qm = sess.run([q_v, p_v, p_m, q_m], {vid_batch:Test_Data, beta:1.0})
+                
+                print(str(g_s)+": elbo "+str(test_elbo)+"\t "+str(e_pkl)+"\t "+str(e_gpl)+"\t "+str(e_ce)+"\t "+str(e_rec),\
+                 ",\t\t qvar range:\t",str(test_pv.max()),"\t",str(test_qv.min()) ,\
+                 ",\t\t qmean range:\t",str(np.abs(test_pm).max()),"\t",str(np.abs(test_qm).max())  )
 
 
                 if g_s%50==1:
