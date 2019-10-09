@@ -32,6 +32,24 @@ def gauss_cross_entropy(mu1, var1, mu2, var2):
 
     return cross_entropy
 
+def gauss_entropy(var1):
+    """
+    Computes the element-wise cross entropy
+    Given q(z) ~ N(z| mu1, var1)
+    returns E_q[ log N(z| mu1, var1) ]
+    args:
+        var1: var  of expectation (batch, tmax, 2) tf variable
+
+    returns:
+        cross_entropy: (batch, tmax, 2) tf variable
+    """
+
+    term0 = tf.log(var1) + 2.8378770664093453 # 1 + log(2*pi)
+
+    cross_entropy = -0.5*( term0 )
+
+    return cross_entropy
+
 
 def build_MLP_inference_graph(vid_batch, layers=[500], tftype=tf.float32):
     """
@@ -269,7 +287,7 @@ def build_elbo_graph(vid_batch, beta, lt=5):
     return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid, gp_lhood, ce_term
 
 
-def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
+def build_np_elbo_graph_old(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     """
     Takes tf variables as inputs and build complete Neural Process elbo graph
     args:
@@ -344,6 +362,79 @@ def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
 
     return np_prior_kl, np_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid, con_p_mu, con_p_var
+
+
+def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
+    """
+    Takes tf variables as inputs and build complete Neural Process elbo graph
+    args:
+        vid_batch: (batch, tmax, px, py) tf placeholder
+        beta: shape=(1) or (), tf placeholder 
+    
+    returns:
+        prior_kl: tf variable (batch)
+        recon_err: tf variabel (batch)
+        elbo: tf variable (batch)
+    """
+
+    # Nueral Process ELBO q(z|x_1:n), qstar is a NN encoder
+    # elbo(x_1:n) = E_q[ log p(x_1:m|z) + log q(z|x_1:m) - log q(z|x_1:n) ] 
+    # = E_q[ log p(x_1:m|z) - log qstar(x_m+1:n)]  - log Z(x_1:m)  + log Z(1:n)
+    # = target recon        - target enc cross ent - con const     + full const 
+
+    batch, tmax, px, py = [int(a) for a in vid_batch.get_shape()]
+
+    # encode all video frames and put a cap on the variance
+    qnet_mu, qnet_var = build_MLP_inference_graph(vid_batch)
+
+    top_var = tf.constant(10000, dtype=vid_batch.dtype)
+    qnet_var = tf.math.minimum(qnet_var, top_var)
+    # bottom_var = tf.constant(1/1000, dtype=vid_batch.dtype)
+    # qnet_var = tf.math.maximum(qnet_var, bottom_var)
+
+    # Get full approximate posterior q(z | x_1:n, y_1:n) and log Z(x_1:n) 
+    _, full_p_mu, full_p_var = build_gp_lhood_and_post_graph(qnet_mu, qnet_var, lt=lt)
+
+
+    # Randomly sample context points, make masks
+    random_tensor = tf.random.uniform([batch, tmax, 1], seed=seed, dtype=qnet_var.dtype)
+    con_mask = random_tensor <= context_prob
+    con_mask = tfmath_ops.cast(con_mask, qnet_mu.dtype)# (batch, tmax, 1)
+    tar_mask = tf.reshape(1-con_mask, (batch, tmax))
+    con_mask2 = tf.concat([con_mask, con_mask], 2) # (batch, tmax, 2)
+    tar_mask2 = (1-con_mask2)
+
+
+
+    # Prior KL term = E_q[ log q(z|x_1:m) - log q(z|x_1:n) ]
+    # (set var of targets to huuuuge, i.e. unknown)
+    con_qnet_var = qnet_var + tar_mask2*10000
+    _, con_p_mu, con_p_var = build_gp_lhood_and_post_graph(qnet_mu, con_qnet_var, lt=lt)
+
+    full_con_ce_term = gauss_cross_entropy(full_p_mu, full_p_var, con_p_mu, con_p_var) #(batch, tmax, 2)
+    full_entropy = gauss_entropy(full_p_var)
+    np_prior_kl = tf.reduce_sum( tar_mask2*(full_con_ce_term - full_entropy), (1,2))
+    
+
+    # Recon error with repam trick E_q[ log p(x_1:n| z)]
+    epsilon = tf.random.normal(shape=(batch, tmax, 2))
+    latent_samples = full_p_mu + epsilon * tf.sqrt(full_p_var)
+    pred_vid_batch_logits = build_MLP_decoder_graph(latent_samples, px, py)
+    recon_err = tf.nn.sigmoid_cross_entropy_with_logits(labels=vid_batch, 
+                                                        logits=pred_vid_batch_logits)
+    elbo_recon = tf.reduce_sum(-recon_err, (2,3)) # (batch, tmax)
+
+    # Get the recon fro target frames only E_q[ log p(x_1:m| z)]
+    np_elbo_recon = tf.reduce_sum(elbo_recon*tar_mask, (1)) # (batch, tmax) -> (batch)
+
+
+    # put it all together and return!
+    np_elbo = np_elbo_recon + beta * np_prior_kl # (batch)
+
+    pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
+
+    return np_prior_kl, np_elbo_recon, np_elbo, qnet_mu, qnet_var, full_p_mu, full_p_var, pred_vid, con_p_mu, con_p_var
+
 
 
 
@@ -470,8 +561,8 @@ if __name__=="__main__":
         init_op = tf.global_variables_initializer()
 
         # Make a folder to save everything
-        chkpnt_dir = make_checkpoint_folder()
-        # chkpnt_dir = "/home/michael/GPVAE_checkpoints/51:__on__9_10_2019__at__9:12:46/"
+        # chkpnt_dir = make_checkpoint_folder()
+        chkpnt_dir = "/home/michael/GPVAE_checkpoints/84:__on__9_10_2019__at__19:15:31/"
         pic_folder = chkpnt_dir + "pics/"
         res_file = chkpnt_dir + "res/ELBO_pandas"
         saver = tf.compat.v1.train.Saver()
@@ -501,6 +592,7 @@ if __name__=="__main__":
                     "max qs_var",
                     "min q_var",
                     "max q_var",
+                    "MSE",
                     "Beta",
                     "Time"]
         res_saver = pandas_res_saver(res_file, res_names)
@@ -539,9 +631,9 @@ if __name__=="__main__":
 
 
                 # Save plot
-                if g_s%50==0:
+                if g_s%200==0:
                     reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:Test_Data, beta:1})
-                    rp, _, _, rv = MSE_rotation(reconpath, Test_traj, reconvar)
+                    rp, _, MSE, rv = MSE_rotation(reconpath, Test_traj, reconvar)
                     _ = plot_latents(Test_Data, Test_traj, reconvid, rp, rv, ax=ax, nplots=6)
                     plt.tight_layout()
                     plt.draw()
@@ -551,9 +643,11 @@ if __name__=="__main__":
 
 
                 # Save elbo, recon, priorKL....
-                if g_s%10==0:
+                if g_s%50==0:
+                    reconpath, reconvar = sess.run([p_m, p_v], {vid_batch:Test_Data, beta:1})
+                    _, _, MSE, _ = MSE_rotation(reconpath, Test_traj, reconvar)
                     new_res = sess.run(res_vars, {vid_batch:Test_Data, beta:1})
-                    new_res += [beta_t, time.time()]
+                    new_res += [MSE, beta_t, time.time()]
                     res_saver(new_res)
 
 

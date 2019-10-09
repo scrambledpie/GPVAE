@@ -9,6 +9,7 @@ from matplotlib.patches import Ellipse
 import shutil
 import pandas as pd
 import pickle
+import time
 
 def Make_path_batch(
     batch=40,
@@ -387,15 +388,29 @@ def make_checkpoint_folder(base_dir=None):
 
 
 class pandas_res_saver:
-
+    """
+    Takes a file and a list of col names to initialise a
+    pandas array. Then accepts extra rows to be added
+    and occaisionally written to disc.
+    """
     def __init__(self, res_file, colnames):
-        # best not overwrite files eh!
+        # reload old results frame
         if os.path.exists(res_file):
-            res_file = res_file + "0"
+            if list(pd.read_pickle(res_file).columns)==colnames:
+                print("res_file: recovered ")
+                self.data = pd.read_pickle(res_file)
+                self.res_file = res_file
+            else:
+                print("res_file: old exists but not same, making new ")
+                self.res_file = res_file + "_" + str(time.time())
+                self.data = pd.DataFrame(columns=colnames)
+        else:
+            print("res_file: new")
+            self.res_file = res_file
+            self.data = pd.DataFrame(columns=colnames)
+            
         self.ncols = len(colnames)
-        self.res_file = res_file
         self.colnames = colnames
-        self.data = pd.DataFrame(columns=colnames)
     
     def __call__(self, new_data):
         new_data = np.asarray(new_data).reshape((-1, self.ncols))
