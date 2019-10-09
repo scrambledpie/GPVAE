@@ -1,9 +1,10 @@
+import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.python.ops import math_ops as tfmath_ops
-import numpy as np
-from utils import Make_Video_batch, make_checkpoint_folder, build_video_batch_graph, plot_latents, MSE_rotation
+from utils import Make_Video_batch, make_checkpoint_folder
+from utils import build_video_batch_graph, plot_latents, MSE_rotation
 import sys
-import matplotlib.pyplot as plt
 
 
 def gauss_cross_entropy(mu1, var1, mu2, var2):
@@ -21,15 +22,16 @@ def gauss_cross_entropy(mu1, var1, mu2, var2):
         cross_entropy: (batch, tmax, 2) tf variable
     """
 
-    term0 = 2.8378770664093453 # log(2*pi*e)
+    term0 = 1.8378770664093453 # log(2*pi)
     term1 = 2*tf.log(var2)
-    term2 = (mu1**2 + var1 - 2*mu1*mu2 + mu2**2) / var2
+    term2 = (var1 + mu1**2 - 2*mu1*mu2 + mu2**2) / var2
 
-    cross_entropy = -0.5*( term0 + term1 + term2)
+    cross_entropy = -0.5*( term0 + term1 + term2 )
 
     return cross_entropy
 
-def build_MLP_inference_graph(vid_batch, layers=[250], tftype=tf.float32):
+
+def build_MLP_inference_graph(vid_batch, layers=[500], tftype=tf.float32):
     """
     Takes a placeholder for batches of videos to be fed in, returns 
     a mean and var of 2d latent space that are tf variables.
@@ -80,7 +82,8 @@ def build_MLP_inference_graph(vid_batch, layers=[250], tftype=tf.float32):
     tf.print(q_means)
     return q_means, q_vars
 
-def build_MLP_decoder_graph(latent_samples, px, py, layers=[250]):
+
+def build_MLP_decoder_graph(latent_samples, px, py, layers=[500]):
     """
     args:
         latent_samples: (batch, tmax, 2), tf variable
@@ -120,6 +123,7 @@ def build_MLP_decoder_graph(latent_samples, px, py, layers=[250]):
 
     return pred_vid_batch_logits
 
+
 def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
     """
     args:
@@ -136,12 +140,15 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
     batch = int(batch)
     tmax = int(tmax)
 
+    top_var = tf.constant(10000, dtype=latent_mean.dtype)
+
     # rename and reshape latents! (batch, tmax, 1)
     lm_x = tf.reshape(latent_mean[:,:,0], (batch, tmax, 1))
-    lv_x = latent_var[:,:,0] # (batch, tmax)
+    lv_x = tf.math.minimum(latent_var[:,:,0], top_var) # (batch, tmax)
 
     lm_y = tf.reshape(latent_mean[:,:,1], (batch, tmax, 1))
-    lv_y = latent_var[:,:,1] # (batch, tmax)
+    # lv_y = latent_var[:,:,1] # (batch, tmax)
+    lv_y = tf.math.minimum(latent_var[:,:,1], top_var)
 
     # all kernel matrices can be computed once and stored as constants
     k_mat = np.arange(tmax)
@@ -180,6 +187,8 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
     x_iK_x = tf.matmul(lm_x, iK_x, transpose_a=True)[:, 0, 0] # (batch, 1, 1) -> (batch,)
     y_iK_y = tf.matmul(lm_y, iK_y, transpose_a=True)[:, 0, 0]
 
+
+    ###### IS THIS CORRECT???!?!?!?!! ADDING DETS?!?!?! #############
     gp_lhood = -0.5*( logdet_Kx + logdet_Ky + x_iK_x + y_iK_y ) # (batch,)
 
 
@@ -208,6 +217,7 @@ def build_gp_lhood_and_post_graph(latent_mean, latent_var, lt=5):
 
     return gp_lhood, post_mu, post_var
 
+
 def build_elbo_graph(vid_batch, beta, lt=5):
     """
     Takes placeholder inputs and build complete elbo graph
@@ -226,6 +236,10 @@ def build_elbo_graph(vid_batch, beta, lt=5):
     # first encode images
     qnet_mean, qnet_var = build_MLP_inference_graph(vid_batch)
 
+    top_var = tf.constant(1000000, dtype=vid_batch.dtype)
+
+    qnet_var = tf.math.minimum(qnet_var, top_var)
+
     # prior KL = gp_lhood + cross_entropy(gp_post, qnet)
     gp_lhood, post_mean, post_var = build_gp_lhood_and_post_graph(qnet_mean, qnet_var, lt=lt)
     ce_term = gauss_cross_entropy(post_mean, post_var, qnet_mean, qnet_var) # (batch, tmax, 2)
@@ -235,18 +249,21 @@ def build_elbo_graph(vid_batch, beta, lt=5):
     # recon error for repam trick
     epsilon = tf.random.normal(shape=(batch, tmax, 2))
     latent_samples = post_mean + epsilon * tf.sqrt(post_var)
+    # latent_samples = qnet_mean
     pred_vid_batch_logits = build_MLP_decoder_graph(latent_samples, px, py)
     recon_err = tf.nn.sigmoid_cross_entropy_with_logits(labels=vid_batch, 
                                                         logits=pred_vid_batch_logits)
     elbo_recon = tf.reduce_sum(-recon_err, (1,2,3))
 
     # Finally put them together to get elbo!
-    elbo = beta*elbo_prior_kl #+ elbo_recon
+    # elbo = elbo_recon + beta*elbo_prior_kl
+    elbo = elbo_prior_kl
 
     # get the reconstruction image for plotting
     pred_vid = tf.nn.sigmoid(pred_vid_batch_logits)
 
     return elbo_prior_kl, elbo_recon, elbo, qnet_mean, qnet_var, post_mean, post_var, pred_vid
+
 
 def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
     """
@@ -260,6 +277,7 @@ def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
         recon_err: tf variabel (batch)
         elbo: tf variable (batch)
     """
+
 
     batch, tmax, px, py = [int(a) for a in vid_batch.get_shape()]
 
@@ -362,22 +380,22 @@ if __name__=="__main__0":
 if __name__=="__main__":
 
     # Data settings
-    batch = 45
+    batch = 30
     tmax = 30
     px = 32
     py = 32
     r = 3
-    lt = 10
-
+    lt = 5
 
     
     plt.ion()
-    fig, ax = plt.subplots(4,3, figsize=(10,10))
+    fig, ax = plt.subplots(6,3, figsize=(6, 8))
     plt.show()
+    plt.tight_layout()
     plt.pause(0.01)
 
     # alias the data generator
-    Make_data = lambda seed: Make_Video_batch(tmax=tmax, 
+    Make_data = lambda seed: Make_Video_batch(tmax=tmax,
                                               px=px, 
                                               py=py,
                                               lt=lt, 
@@ -429,6 +447,7 @@ if __name__=="__main__":
 
         # Make a folder to save everything
         chkpnt_dir = make_checkpoint_folder()
+        # chkpnt_dir = "/Users/academic/GPVAE_checkpoints/67:__on__8_10_2019__at__23:21:17/"
         saver = tf.train.Saver()
         print("\nCheckpoint Directory:\n"+str(chkpnt_dir)+"\n")
         
@@ -446,8 +465,10 @@ if __name__=="__main__":
                 print("\n\nInitialised Model")
 
             # start training that elbo!
-            for t in range(1, 1000):
-                
+            # for t in range(1, 1000):
+            t=-1
+            while True:
+                t+=1
                 # prior KL annealing factor
                 beta_t = 1 #+ (beta_0-1) * np.exp(t/2000)
 
@@ -457,17 +478,18 @@ if __name__=="__main__":
 
                 # Test, don't do an optim step
                 test_elbo, g_s = sess.run([av_elbo, global_step], {vid_batch:Test_Data, beta:1.0})
-                print(str(g_s)+": elbo "+str(test_elbo))
+                test_qv, test_pv = sess.run([q_v, p_v], {vid_batch:Test_Data, beta:1.0})
+                print(str(g_s)+": elbo "+str(test_elbo), ", qvar range:",str(test_pv.max()),str(test_qv.max())  )
 
-                if g_s%10==1:
-                    reconpath, reconvid = sess.run([p_m, pred_vid], {vid_batch:Test_Data, beta:1})
-                    reconpath, _, _ = MSE_rotation(reconpath, Test_traj)
-                    _ = plot_latents(Test_Data, Test_traj, reconvid, reconpath, ax=ax)
+
+                if g_s%50==1:
+                    reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:Test_Data, beta:1})
+                    rp, _, _, rv = MSE_rotation(reconpath, Test_traj, reconvar)
+                    _ = plot_latents(Test_Data, Test_traj, reconvid, rp, rv, ax=ax, nplots=6)
+                    plt.tight_layout()
                     plt.draw()
                     # plt.show()
                     plt.pause(0.01)
-                    
-                    
                     
 
                 # Checkpoint

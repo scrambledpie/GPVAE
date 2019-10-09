@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import os
 from datetime import datetime as dt
 import sys
-
+from matplotlib.patches import Ellipse
 
 def Make_path_batch(
     batch=40,
@@ -174,18 +174,20 @@ def build_video_batch_graph(tmax=50,
     return vid_batch
 
 
-def MSE_rotation(X, Y):
+def MSE_rotation(X, Y, VX=None):
     """
     Given X, rotate it onto Y
     args:
         X: np array (batch, tmax, 2)
         Y: np array (batch, tmax, 2)
+        VX: variance of X values (batch, tmax, 2)
 
     returns:
         X_rot: rotated X (batch, tmax, 2)
         W: nparray (2, 2)
         B: nparray (2, 1)
         MSE: ||X_rot - Y||^2
+        VX_rot: rotated cov matrices
     """
 
     batch, tmax, _ = X.shape
@@ -203,18 +205,34 @@ def MSE_rotation(X, Y):
     try:
         MSE = MSE[0] + MSE[1]
     except:
-        MSE=0
+        MSE = np.nan
 
     X_rot = np.matmul(X, W)
-
-
     X_rot = X_rot.reshape(batch, tmax, 2)
 
 
-    return X_rot, W, MSE
+    VX_rot = np.zeros((batch, tmax, 2, 2))
+    if VX is not None:
+        W_rot = W[:2,:]
+        W_rot_t = np.transpose(W[:2,:])
+        for b in range(batch):
+            for t in range(tmax):
+                VX_i = np.diag(VX[b,t,:])
+                VX_i = np.matmul(W_rot, VX_i)
+                VX_i = np.matmul(VX_i, W_rot_t)
+                VX_rot[b,t,:,:] = VX_i
+
+    return X_rot, W, MSE, VX_rot
 
 
-def plot_latents(truevids, truepath, reconvids=None, reconpath=None, reconvar=None, ax=None, nplots=4, paths=None):
+def plot_latents(truevids, 
+                 truepath, 
+                 reconvids=None, 
+                 reconpath=None, 
+                 reconvar=None, 
+                 ax=None, 
+                 nplots=4, 
+                 paths=None):
     """
     Plots an array of input videos and reconstructions.
     args:
@@ -222,9 +240,9 @@ def plot_latents(truevids, truepath, reconvids=None, reconpath=None, reconvar=No
         truepath: (batch, tmax, 2) np array of latent positions
         reconvids: (batch, tmax, px, py) np array of videos
         reconpath: (batch, tmax, 2) np array of latent positions
-        reconvar: (batch, tmax, 2, 2) np array, uncertainty of latents
+        reconvar: (batch, tmax, 2, 2) np array, cov mat 
         ax: (optional) list of lists of axes objects for plotting
-        nplots: int, number of rows of plotting array, each row is one video
+        nplots: int, number of rows of plot, each row is one video
         paths: (batch, tmax, 2) np array optional extra array to plot
 
     returns:
@@ -233,27 +251,28 @@ def plot_latents(truevids, truepath, reconvids=None, reconpath=None, reconvar=No
     """
 
     if ax is None:
-        _, ax = plt.subplots(nplots,3, figsize=(10,10))
+        _, ax = plt.subplots(nplots,3, figsize=(6, 8))
     
     for axi in ax:
         for axj in axi:
             axj.clear()
 
-
-    
-
     _, tmax, _, _ = truevids.shape
 
-    # reconpath = MSE_rotation(reconpath, truepath)[0]
 
-    xmin = np.min([truepath[:nplots,:,0].min(), reconpath[:nplots,:,0].min()]) -0.1
+    # get axis limits for the latent space
+    xmin = np.min([truepath[:nplots,:,0].min(), 
+                   reconpath[:nplots,:,0].min()]) -0.1
     xmin = np.min([xmin, -2.5])
-    xmax = np.max([truepath[:nplots,:,0].max(), reconpath[:nplots,:,0].max()]) +0.1
+    xmax = np.max([truepath[:nplots,:,0].max(), 
+                   reconpath[:nplots,:,0].max()]) +0.1
     xmax = np.max([xmax, 2.5])
 
-    ymin = np.min([truepath[:nplots,:,1].min(), reconpath[:nplots,:,1].min()]) -0.1
+    ymin = np.min([truepath[:nplots,:,1].min(), 
+                   reconpath[:nplots,:,1].min()]) -0.1
     ymin = np.min([ymin, -2.5])
-    ymax = np.max([truepath[:nplots,:,1].max(), reconpath[:nplots,:,1].max()]) +0.1
+    ymax = np.max([truepath[:nplots,:,1].max(), 
+                   reconpath[:nplots,:,1].max()]) +0.1
     ymax = np.max([xmax, 2.5])
 
     def make_heatmap(vid):
@@ -263,10 +282,15 @@ def plot_latents(truevids, truepath, reconvids=None, reconpath=None, reconvar=No
         returns:
             flat_vid: px, py
         """
-        vid = np.array([t*v + 10 for t,v in enumerate(vid)])
-        flat_vid = np.max(vid, 0)*(1/(10+tmax))
+        vid = np.array([(t+4)*v for t,v in enumerate(vid)])
+        flat_vid = np.max(vid, 0)*(1/(4+tmax))
         return flat_vid
     
+    if reconvar is not None:
+        E = np.linalg.eig(reconvar[:nplots,:,:,:])
+        H = np.sqrt(E[0][:,:,0])
+        W = np.sqrt(E[0][:,:,1])
+        A = np.arctan2(E[1][:,:,0,1], E[1][:,:,0,0])*(360/(2*np.pi))
 
     def plot_set(i):
         # i is batch element = plot row
@@ -274,12 +298,14 @@ def plot_latents(truevids, truepath, reconvids=None, reconpath=None, reconvar=No
         # left column of plots is true data heatmap
         tv = make_heatmap(truevids[i,:,:,:])
         ax[i][0].imshow(1-tv, origin='lower', cmap='Greys')
+        ax[i][0].axis('off')
 
         # middle column is trajectories
         ax[i][1].plot(truepath[i,:,0], truepath[i,:,1])
         ax[i][1].set_xlim([xmin, xmax])
         ax[i][1].set_ylim([ymin, ymax])
         ax[i][1].scatter(truepath[i,-1,0], truepath[i,-1,1])
+
         if reconpath is not None:
             ax[i][1].plot(reconpath[i,:,0], reconpath[i,:,1])
             ax[i][1].scatter(reconpath[i,-1,0], reconpath[i,-1,1])
@@ -287,20 +313,29 @@ def plot_latents(truevids, truepath, reconvids=None, reconpath=None, reconvar=No
         if paths is not None:
             ax[i][1].plot(paths[i,:,0], paths[i,:,1])
             ax[i][1].scatter(paths[i,-1,0], paths[i,-1,1])
+        
+        if reconvar is not None:
+            ells = [Ellipse(xy=reconpath[i,t,:], 
+                            width=W[i,t], 
+                            height=H[i,t], 
+                            angle=A[i,t]) for t in range(tmax)]
+            for e in ells:
+                ax[i][1].add_artist(e)
+                e.set_clip_box(ax[i][1].bbox)
+                e.set_alpha(0.25)
+                e.set_facecolor('C1')
 
         # right column is reconstructed video
         if reconvids is not None:
             rv = make_heatmap(reconvids[i,:,:,:])
             ax[i][2].imshow(1-rv, origin='lower', cmap='Greys')
+            ax[i][2].axis('off')
     
     for i in range(nplots):
         plot_set(i)
     
     return ax
     
-
-
-
 
 def make_checkpoint_folder(base_dir=None):
 
@@ -331,18 +366,30 @@ if __name__=="__main__":
 
     traj, vid_batch = Make_Video_batch()
 
-    new_traj = 2*np.flip(traj, 2) + 5
+    new_traj = 2*np.flip(traj, 2)+2
+
+    batch, tmax, _ = traj.shape
+
+    new_traj_var = np.eye(2).reshape((1,1,2,2))
+    new_traj_var = np.tile(new_traj_var, (batch, tmax, 1, 1))
+
     
-    new_traj2 = MSE_rotation(new_traj, traj)[0]
+    new_traj_rot, W, MSE, new_traj_var_rot = MSE_rotation(new_traj, 
+                                                          traj, 
+                                                          new_traj_var)
+
+
 
     # print(traj)
-    fig = plot_latents(truevids=vid_batch,
+    ax  = plot_latents(truevids=vid_batch,
                        truepath=traj,
-                       reconpath=new_traj2,
+                       reconpath=new_traj_rot,
                        reconvids=vid_batch,
-                    #    paths = new_traj2,
+                       reconvar=new_traj_var,
                        nplots=4)
+    plt.tight_layout()
     plt.show()
+    fig = plt.gcf()
 
 if __name__=="__main__0":
     # A = Make_Video_batch()
