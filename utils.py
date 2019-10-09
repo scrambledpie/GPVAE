@@ -7,6 +7,8 @@ from datetime import datetime as dt
 import sys
 from matplotlib.patches import Ellipse
 import shutil
+import pandas as pd
+import pickle
 
 def Make_path_batch(
     batch=40,
@@ -355,23 +357,55 @@ def make_checkpoint_folder(base_dir=None):
     filetime = str(T.day)+"_"+str(T.month)+"_"+str(T.year) + "__at__"
     filetime += str(T.hour)+":"+str(T.minute)+":"+str(T.second)
 
+    # main folder
     checkpoint_folder = base_dir + filenum + filetime
+    os.makedirs(checkpoint_folder)
 
-    if not os.path.exists(checkpoint_folder):
-            os.makedirs(checkpoint_folder)
-            src_folder = checkpoint_folder + "/sourcecode/"
-            os.makedirs(src_folder)
-            old_src_dir = homedir + "/GPVAE/"
-            src_files = os.listdir(old_src_dir)
-            print("\n\nCopying source Code to "+src_folder)
-            for f in src_files:
-                if ".py" in f:
-                    src_file = old_src_dir + f
-                    shutil.copy2(src_file, src_folder)
-                    print(src_file)
+    # pictures folder
+    pic_folder = checkpoint_folder + "/pics/"
+    os.makedirs(pic_folder)
+
+    # pickled results files
+    res_folder = checkpoint_folder + "/res/"
+    os.makedirs(res_folder)
+
+    # source code
+    src_folder = checkpoint_folder + "/sourcecode/"
+    os.makedirs(src_folder)
+    old_src_dir = homedir + "/GPVAE/"
+    src_files = os.listdir(old_src_dir)
+    print("\n\nCopying source Code to "+src_folder)
+    for f in src_files:
+        if ".py" in f:
+            src_file = old_src_dir + f
+            shutil.copy2(src_file, src_folder)
+            print(src_file)
     print("\n")
+
     
     return checkpoint_folder + "/"
+
+
+class pandas_res_saver:
+
+    def __init__(self, res_file, colnames):
+        # best not overwrite files eh!
+        if os.path.exists(res_file):
+            res_file = res_file + "0"
+        self.ncols = len(colnames)
+        self.res_file = res_file
+        self.colnames = colnames
+        self.data = pd.DataFrame(columns=colnames)
+    
+    def __call__(self, new_data):
+        new_data = np.asarray(new_data).reshape((-1, self.ncols))
+        new_data = pd.DataFrame(new_data, columns=self.colnames)
+        self.data = pd.concat([self.data, new_data])
+
+        if  self.data.shape[0]%10 == 1:
+            self.data.to_pickle(self.res_file)
+            print("Saved results to file: "+self.res_file)
+    
 
 
 if __name__=="__main__0":

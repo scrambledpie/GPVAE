@@ -4,7 +4,9 @@ import tensorflow as tf
 from tensorflow.python.ops import math_ops as tfmath_ops
 from utils import Make_Video_batch, make_checkpoint_folder
 from utils import build_video_batch_graph, plot_latents, MSE_rotation
+from utils import pandas_res_saver
 import sys
+import time
 
 
 def gauss_cross_entropy(mu1, var1, mu2, var2):
@@ -282,8 +284,8 @@ def build_np_elbo_graph(vid_batch, beta, context_prob=0.5, seed=None, lt=5):
 
     # Nueral Process ELBO q(z|x_1:n), qstar is a NN encoder
     # elbo(x_1:n) = E_q[ log p(x_1:m|z) + log q(z|x_1:m) - log q(z|x_1:n) ] 
-    # = E_q[ log p(x_1:m|z) - log qstar(x_m+1:n)] - log Z(x_1:m)  + log Z(1:n)
-    # = reconstruction term - cross entropy term  - norm const(m) + norm const(n) 
+    # = E_q[ log p(x_1:m|z) - log qstar(x_m+1:n)]  - log Z(x_1:m)  + log Z(1:n)
+    # = target recon        - target enc cross ent - con const     + full const 
 
     batch, tmax, px, py = [int(a) for a in vid_batch.get_shape()]
 
@@ -470,10 +472,38 @@ if __name__=="__main__":
         # Make a folder to save everything
         chkpnt_dir = make_checkpoint_folder()
         # chkpnt_dir = "/home/michael/GPVAE_checkpoints/51:__on__9_10_2019__at__9:12:46/"
+        pic_folder = chkpnt_dir + "pics/"
+        res_file = chkpnt_dir + "res/ELBO_pandas"
         saver = tf.compat.v1.train.Saver()
         print("\nCheckpoint Directory:\n"+str(chkpnt_dir)+"\n")
+
         
         beta_0 = 100
+
+        # Results to be tracked and saved in Pandas
+        res_vars = [global_step,
+                    av_elbo, 
+                    av_recon, 
+                    av_pkl, 
+                    av_gpl,
+                    av_ce,
+                    tf.math.reduce_min(q_v),
+                    tf.math.reduce_max(q_v),
+                    tf.math.reduce_min(p_v),
+                    tf.math.reduce_max(p_v)]
+        res_names= ["Step",
+                    "ELBO",
+                    "Reconstruction",
+                    "Prior KL",
+                    "GP Likelihood",
+                    "Cross Entropy",
+                    "min qs_var",
+                    "max qs_var",
+                    "min q_var",
+                    "max q_var",
+                    "Beta",
+                    "Time"]
+        res_saver = pandas_res_saver(res_file, res_names)
 
         # Now let's start doing some computation!
         with tf.Session() as sess:
@@ -495,22 +525,21 @@ if __name__=="__main__":
                 beta_t = 1 #+ (beta_0-1) * np.exp(t/2000)
 
                 # Train, do an optim step
-                # Data = Make_data(t)
-                _ = sess.run(optim_step, {beta:beta_t})
-
-                # Test, don't do an optim step
-                test_elbo, g_s, e_rec, e_pkl, e_gpl, e_ce\
-                     = sess.run([av_elbo, global_step, av_recon, av_pkl, av_gpl, av_ce], \
-                         {vid_batch:Test_Data, beta:1.0})
-
-                test_qv, test_pv, test_pm, test_qm = sess.run([q_v, p_v, p_m, q_m], {vid_batch:Test_Data, beta:1.0})
+                _, g_s = sess.run([optim_step, global_step], {beta:beta_t})
                 
-                print(str(g_s)+": elbo "+str(test_elbo)+"\t "+str(e_pkl)+"\t "+str(e_gpl)+"\t "+str(e_ce)+"\t "+str(e_rec),\
-                 ",\t\t qvar range:\t",str(test_pv.max()),"\t",str(test_qv.min()) ,\
-                 ",\t\t qmean range:\t",str(np.abs(test_pm).max()),"\t",str(np.abs(test_qm).max())  )
+                # Print out diagnostics/tracking
+                if g_s%10==0:
+                    test_elbo, e_rec, e_pkl, e_gpl, e_ce\
+                        = sess.run([av_elbo, av_recon, av_pkl, av_gpl, av_ce], \
+                            {vid_batch:Test_Data, beta:1.0})
+                    test_qv, test_pv, test_pm, test_qm = sess.run([q_v, p_v, p_m, q_m], {vid_batch:Test_Data, beta:1.0})
+                    print(str(g_s)+": elbo "+str(test_elbo)+"\t "+str(e_pkl)+"\t "+str(e_gpl)+"\t "+str(e_ce)+"\t "+str(e_rec),\
+                    ",\t\t qvar range:\t",str(test_pv.max()),"\t",str(test_qv.min()) ,\
+                    ",\t\t qmean range:\t",str(np.abs(test_pm).max()),"\t",str(np.abs(test_qm).max())  )
 
 
-                if g_s%50==1:
+                # Save plot
+                if g_s%50==0:
                     reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:Test_Data, beta:1})
                     rp, _, _, rv = MSE_rotation(reconpath, Test_traj, reconvar)
                     _ = plot_latents(Test_Data, Test_traj, reconvid, rp, rv, ax=ax, nplots=6)
@@ -518,9 +547,17 @@ if __name__=="__main__":
                     plt.draw()
                     # plt.show()
                     plt.pause(0.01)
-                    
+                    plt.savefig(pic_folder + str(g_s)+".png")
 
-                # Checkpoint
-                if g_s%1000==1:
+
+                # Save elbo, recon, priorKL....
+                if g_s%10==0:
+                    new_res = sess.run(res_vars, {vid_batch:Test_Data, beta:1})
+                    new_res += [beta_t, time.time()]
+                    res_saver(new_res)
+
+
+                # Save NN weights
+                if g_s%1000==0:
                     saver.save(sess, chkpnt_dir+"model", global_step=g_s)
                     print("\n\nModel Saved: "+ chkpnt_dir +"\n\n")
