@@ -144,7 +144,7 @@ def build_video_batch_graph(tmax=50,
 
 
     K = tf.exp(K*ilt) + 0.00001*tf.eye(tmax, dtype=dtype)
-    chol_K = tf.linalg.cholesky(K)
+    chol_K = tf.Variable(tf.linalg.cholesky(K), trainable=False)
 
     ran_Z = tf.random.normal((tmax, 2*batch))
 
@@ -341,7 +341,7 @@ def plot_latents(truevids,
     return ax
     
 
-def make_checkpoint_folder(base_dir=None):
+def make_checkpoint_folder(extra="", base_dir=None):
 
     # make a "root" dir to store all checkpoints
     if base_dir is None:
@@ -351,7 +351,7 @@ def make_checkpoint_folder(base_dir=None):
             os.makedirs(base_dir)
     
     # now make a unique folder inside the root for this experiments
-    filenum = str(len(os.listdir(base_dir))) + ":__on__"
+    filenum = str(len(os.listdir(base_dir))) + ":"+extra+"__on__"
 
     T = dt.now()
 
