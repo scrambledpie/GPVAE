@@ -626,7 +626,7 @@ def run_experiment(args):
         res_saver = pandas_res_saver(res_file, res_names)
 
         # Now let's start doing some computation!
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.333)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.22)
         with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
 
             # Attempt a restore weights
@@ -698,7 +698,8 @@ if __name__=="__main__":
 
     args = parser.parse_args()
 
-    run_experiment(args)
+    for i in range(10):
+        run_experiment(args)
 
 
 
