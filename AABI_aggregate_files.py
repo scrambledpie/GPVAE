@@ -20,10 +20,13 @@ for f in files:
 
 
     new_file = elbo + "_" + b + "_" + number
-    new_file = "/home/maths/phrnaj/AABIsavefiles/" + new_file
+    new_file = "/home/maths/phrnaj/AABIsavefiles/" #+ new_file
     
     src_file = "/home/maths/phrnaj/GPVAE_checkpoints/" + f + "/res/ELBO_pandas"
     
-    new_file_ = shutil.copy(src_file, new_file)
+    print(f)
+    print(src_file)
+
+    new_file = shutil.copy(src_file, new_file)
     
-    
+    print(new_file)
