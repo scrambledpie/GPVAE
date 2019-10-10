@@ -577,6 +577,10 @@ def run_experiment(args):
             e_pkl = tf.reduce_mean(np_pkl)
             e_rec = tf.reduce_mean(np_rec)
 
+        av_s_elbo = tf.reduce_mean(s_elbo)
+        av_s_rec  = tf.reduce_mean(s_rec)
+        av_s_pkl  = tf.reduce_mean(s_pkl)
+
 
         # Add optimizer ops to graph (minimizing neg elbo!), print out trainable vars
         global_step = tf.Variable(0, name='global_step',trainable=False)
@@ -598,9 +602,9 @@ def run_experiment(args):
         # Results to be tracked and Pandas saver
         res_vars = [global_step,
                     loss,
-                    s_elbo,
-                    s_rec,
-                    s_pkl,
+                    av_s_elbo,
+                    av_s_rec,
+                    av_s_pkl,
                     e_elb,
                     e_rec,
                     e_pkl,
