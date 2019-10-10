@@ -19,14 +19,16 @@ for f in files:
             beta = b
 
 
-    new_file = elbo + "_" + b + "_" + number
+    new_name = elbo + "_" + beta + "_" + number
     new_file = "/home/maths/phrnaj/AABIsavefiles/" #+ new_file
     
     src_file = "/home/maths/phrnaj/GPVAE_checkpoints/" + f + "/res/ELBO_pandas"
     
     print(f)
     print(src_file)
-
-    new_file = shutil.copy(src_file, new_file)
     
-    print(new_file)
+    try:
+        new_file = shutil.copy(src_file, new_file)
+        os.rename("/home/maths/phrnaj/AABIsavefiles/ELBO_pandas",\
+              "/home/maths/phrnaj/AABIsavefiles/"+new_name)
+        print("/home/maths.phrnaj/AABIsavefiles/"+new_name+"\n")
