@@ -527,6 +527,10 @@ def run_experiment(args):
 
     # Make a folder to save everything
     extra = args.elbo + "_" + str(args.beta0)
+
+    if args.modellt<0.01:
+        extra += "_lt0_"
+
     chkpnt_dir = make_checkpoint_folder(extra)
     # chkpnt_dir = "/home/michael/GPVAE_checkpoints/84:__on__9_10_2019__at__19:15:31/"
     pic_folder = chkpnt_dir + "pics/"
@@ -548,7 +552,8 @@ def run_experiment(args):
     px = 32
     py = 32
     r = 3
-    lt = 5
+    vid_lt = 5
+    model_lt = args.modellt
 
     # Load test batch from HDD
     with open(os.getenv("HOME")+"/GPVAE/Test_Batches.pkl", "rb") as f:
@@ -561,9 +566,9 @@ def run_experiment(args):
 
         # Make all the graphs
         beta = tf.compat.v1.placeholder(dtype=tf.float32, shape=())
-        vid_batch = build_video_batch_graph(batch=batch, tmax=tmax, px=px, py=py, r=r, lt=lt)
+        vid_batch = build_video_batch_graph(batch=batch, tmax=tmax, px=px, py=py, r=r, lt=vid_lt)
         s_elbo, s_rec, s_pkl, np_elbo, np_rec, np_pkl, \
-            p_m,p_v,q_m,q_v,pred_vid, globs = build_sin_and_np_elbo_graphs(vid_batch, beta, lt=lt)
+            p_m,p_v,q_m,q_v,pred_vid, globs = build_sin_and_np_elbo_graphs(vid_batch, beta, lt=model_lt)
 
         # The actual loss functions!
         if args.elbo=="SIN":
@@ -699,6 +704,7 @@ if __name__=="__main__":
     parser.add_argument('--beta0', type=float, default=1, help='initial beta annealing value')
     parser.add_argument('--elbo', type=str, choices=['SIN', 'NP'], default='SIN',
                     help='Structured Inf Nets or Neural Processes elbo')
+    parser.add_argument('--modellt', type=float, default=5, help='time scale of model to fit to data')
 
     args = parser.parse_args()
 
