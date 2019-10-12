@@ -5,6 +5,7 @@ import shutil
 
 files = os.listdir("/home/maths/phrnaj/GPVAE_checkpoints/")
 files = [f for f in files if "NP" in f or "SIN" in f]
+files = [f for f in files if not "lt" in f]
 
 for f in files:
     number = f.split(":")[0]
@@ -29,6 +30,7 @@ for f in files:
     
     try:
         new_file = shutil.copy(src_file, new_file)
-        os.rename("/home/maths/phrnaj/AABIsavefiles/ELBO_pandas",\
-              "/home/maths/phrnaj/AABIsavefiles/"+new_name)
+        os.rename("/home/maths/phrnaj/AABIsavefiles/ELBO_pandas","/home/maths/phrnaj/AABIsavefiles/"+new_name)
         print("/home/maths.phrnaj/AABIsavefiles/"+new_name+"\n")
+    except:
+	pass
