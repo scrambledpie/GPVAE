@@ -475,7 +475,7 @@ def run_local_gpu_job(file='~/GPVAE/GPVAEmodel.py', flags=None, njobs=10):
 
         # call_bash("tmux send-keys -t gpujob 'conda activate TF' 'C-m'")
 
-        time.sleep(0.15)
+        time.sleep(2)
     
 
 if __name__=="__main__":
