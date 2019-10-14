@@ -341,17 +341,19 @@ def plot_latents(truevids,
     return ax
     
 
-def make_checkpoint_folder(extra="", base_dir=None):
+def make_checkpoint_folder(expid=None, extra="", base_dir=None):
 
     # make a "root" dir to store all checkpoints
     if base_dir is None:
         homedir = os.getenv("HOME")
-        base_dir = homedir+"/GPVAE_checkpoints/" 
+        base_dir = homedir+"/GPVAE_checkpoints/"
         if not os.path.exists(base_dir):
             os.makedirs(base_dir)
     
     # now make a unique folder inside the root for this experiments
     filenum = str(len(os.listdir(base_dir))) + ":"+extra+"__on__"
+    if expid is not None:
+        filenum = expid + "/" + filenum
 
     T = dt.now()
 
