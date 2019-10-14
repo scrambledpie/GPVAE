@@ -893,7 +893,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Train GPP-VAE')
     parser.add_argument('--steps', type=int, default=50000, help='Number of steps of Adam')
     parser.add_argument('--beta0', type=float, default=1, help='initial beta annealing value')
-    parser.add_argument('--elbo', type=str, choices=['SIN', 'NP'], default='SIN',
+    parser.add_argument('--elbo', type=str, choices=['SIN', 'NP'], default='NP',
                     help='Structured Inf Nets or Neural Processes elbo')
     parser.add_argument('--modellt', type=float, default=5, help='time scale of model to fit to data')
     parser.add_argument('--expid', type=str, default="debug", help='give this experiment a name')
