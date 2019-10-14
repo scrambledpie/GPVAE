@@ -431,10 +431,10 @@ def call_bash(cmd):
     process = sp.Popen(cmd.split(), stdout=sp.PIPE)
     output, error = process.communicate()
 
-def dict_to_flags(dict):
+def dict_to_flags(mydict):
     cmd = ""
-    for k, v in dict:
-        cmd += " --" + k " " + v
+    for k, v in mydict.items():
+        cmd += " --" + k + " " + str(v)
     return cmd
 
 
@@ -471,7 +471,7 @@ def run_local_gpu_job(file='~/GPVAE/GPVAEmodel.py', flags=None, njobs=10):
         sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob 'source ~/.bashrc' 'C-m'"])
         sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob 'conda activate TFgpu' 'C-m'"])
         sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob \
-            'python " + file + dict_to_flags(flags[i]) + "' "])
+            'python " + file + dict_to_flags(flags[i]) + "' 'C-m'"])
 
         # call_bash("tmux send-keys -t gpujob 'conda activate TF' 'C-m'")
 
@@ -479,8 +479,10 @@ def run_local_gpu_job(file='~/GPVAE/GPVAEmodel.py', flags=None, njobs=10):
     
 
 if __name__=="__main__":
-    flags = [{'ram':0.1} for i in range(10)]
-    run_local_gpu_job()
+
+    flags = [{'ram':0.1, 'seed':0} for i in range(10)]
+
+    run_local_gpu_job(flags=flags)
 
 
 if __name__=="__main__0":
