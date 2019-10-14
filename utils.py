@@ -10,6 +10,7 @@ import shutil
 import pandas as pd
 import pickle
 import time
+import subprocess as sp
 
 def Make_path_batch(
     batch=40,
@@ -347,13 +348,15 @@ def make_checkpoint_folder(expid=None, extra="", base_dir=None):
     if base_dir is None:
         homedir = os.getenv("HOME")
         base_dir = homedir+"/GPVAE_checkpoints/"
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
+
+    if expid is not None:
+        base_dir = base_dir + expid + "/"
+
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
     
     # now make a unique folder inside the root for this experiments
     filenum = str(len(os.listdir(base_dir))) + ":"+extra+"__on__"
-    if expid is not None:
-        filenum = expid + "/" + filenum
 
     T = dt.now()
 
@@ -424,6 +427,61 @@ class pandas_res_saver:
             print("Saved results to file: "+self.res_file)
     
 
+def call_bash(cmd):
+    process = sp.Popen(cmd.split(), stdout=sp.PIPE)
+    output, error = process.communicate()
+
+def dict_to_flags(dict):
+    cmd = ""
+    for k, v in dict:
+        cmd += " --" + k " " + v
+    return cmd
+
+
+def run_local_gpu_job(file='~/GPVAE/GPVAEmodel.py', flags=None, njobs=10):
+    """
+    Run the file njobs times with the flags listed in flags dicts
+    args:
+        file: str, path to file to run
+        flags: len=njobs list, each is a dict of flags
+        njobs: how many to run in parallel
+    
+    returns:
+        nothing
+    """
+
+    assert len(flags)==njobs; "params and jobs must be the same length"
+
+    call_bash('tmux new -d -s gpujob')
+    call_bash('tmux new-window -t gpujob')
+    call_bash('tmux swap-window -t gpujob:0 -s gpujob:1')
+    time.sleep(0.1)
+    call_bash('tmux kill-window -t gpujob:1')
+
+    time.sleep(0.1)
+
+
+
+    # create panes and load htop
+    for i in range(njobs):
+        if i >0:
+            sp.call(["/bin/bash", "-c", "tmux split-window -v -t gpujob"])
+            sp.call(["/bin/bash", "-c", "tmux select-layout -t gpujob tiled"])
+
+        sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob 'source ~/.bashrc' 'C-m'"])
+        sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob 'conda activate TFgpu' 'C-m'"])
+        sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob \
+            'python " + file + dict_to_flags(flags[i]) + "' "])
+
+        # call_bash("tmux send-keys -t gpujob 'conda activate TF' 'C-m'")
+
+        time.sleep(0.15)
+    
+
+if __name__=="__main__":
+    flags = [{'ram':0.1} for i in range(10)]
+    run_local_gpu_job()
+
 
 if __name__=="__main__0":
 
@@ -454,7 +512,7 @@ if __name__=="__main__0":
     plt.show()
     fig = plt.gcf()
 
-if __name__=="__main__":
+if __name__=="__main__0":
     # A = Make_Video_batch()
 
     make_checkpoint_folder()
