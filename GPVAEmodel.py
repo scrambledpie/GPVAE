@@ -233,7 +233,7 @@ def build_sin_and_np_elbo_graphs2(vid_batch, beta, lt=5, context_ratio=0.5):
     # con_tf = tf.constant( con_np , dtype=tf.int32)
     # Choose a random split of target-context for each batch
     con_tf = tf.random.normal(shape=(),
-                              mean=0.5*context_ratio, 
+                              mean=context_ratio*float(tmax), 
                               stddev=np.sqrt(context_ratio*(1-context_ratio)*float(tmax)))
     con_tf = tf.math.maximum(con_tf, 2)
     con_tf = tf.math.minimum(con_tf, int(tmax)-2)
