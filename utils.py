@@ -481,7 +481,6 @@ def run_local_gpu_job(file='~/GPVAE/GPVAEmodel.py', flags=None, njobs=10):
 if __name__=="__main__":
 
     flags = [{'ram':0.05, 'seed':0, 'expid':'NP-stochastic-con-tar2', 'elbo':'NP'} for i in range(10)]
-
     run_local_gpu_job(flags=flags)
 
 

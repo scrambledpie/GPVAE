@@ -164,11 +164,13 @@ def build_1d_gp(X, Y, varY, X_test, lt=5):
     """
 
     # Prepare all constants
-    batch, n = [int(s) for s in X.get_shape()]
+    batch, _ = X.get_shape()
+    n = tf.shape(X)[1]
     _, ns = X_test.get_shape()
 
     ilt = tf.constant( -0.5*(1/(lt*lt)) )
-    lhood_pi_term = tf.constant(np.log(2*np.pi) * int(n), dtype=Y.dtype) # shape = (1)
+    # lhood_pi_term = tf.constant(np.log(2*np.pi) * int(n), dtype=Y.dtype) # shape = (1)
+    lhood_pi_term = tf.cast(n, dtype=tf.float32) * np.log(2*np.pi)
     
     # data cov matrix K = exp( -1/2 * (X-X)**2/l**2) + noise
     K = tf.reshape(X, (batch, n, 1)) - tf.reshape(X, (batch, 1, n)) # (batch, n n)
@@ -227,8 +229,16 @@ def build_sin_and_np_elbo_graphs2(vid_batch, beta, lt=5, context_ratio=0.5):
 
     batch, tmax, px, py = [int(s) for s in vid_batch.get_shape()]
 
-    con_np = np.floor(context_ratio*int(tmax)).astype(int)
-    con_tf = tf.constant( con_np , dtype=tf.int32)
+    # con_np = np.floor(context_ratio*int(tmax)).astype(int)
+    # con_tf = tf.constant( con_np , dtype=tf.int32)
+    # Choose a random split of target-context for each batch
+    con_tf = tf.random.normal(shape=(),
+                              mean=context_ratio*float(tmax), 
+                              stddev=np.sqrt(context_ratio*(1-context_ratio)*float(tmax)))
+    con_tf = tf.math.maximum(con_tf, 2)
+    con_tf = tf.math.minimum(con_tf, int(tmax)-2)
+    con_tf = tf.cast(tf.round(con_tf), tf.int32)
+
     dt = vid_batch.dtype
     
     # recognition network terms
@@ -250,17 +260,17 @@ def build_sin_and_np_elbo_graphs2(vid_batch, beta, lt=5, context_ratio=0.5):
 
     # time stamps of context points
     con_T = [tf.gather(T, con_ind[i,:]) for i in range(batch)]
-    con_T = [tf.reshape(ct, (1,con_np)) for ct in con_T]
+    con_T = [tf.reshape(ct, (1,con_tf)) for ct in con_T]
     con_T = tf.concat(con_T, 0)
 
     # encoded means of contet points
     con_lm = [tf.gather(qnet_mu[i,:,:], con_ind[i,:], axis=0) for i in range(batch)]
-    con_lm = [tf.reshape(cm, (1,con_np,2)) for cm in con_lm]
+    con_lm = [tf.reshape(cm, (1,con_tf,2)) for cm in con_lm]
     con_lm = tf.concat(con_lm, 0)
 
     # encoded variances of context points
     con_lv = [tf.gather(qnet_var[i,:,:], con_ind[i,:], axis=0) for i in range(batch)]
-    con_lv = [tf.reshape(cv, (1,con_np,2)) for cv in con_lv]
+    con_lv = [tf.reshape(cv, (1,con_tf,2)) for cv in con_lv]
     con_lv = tf.concat(con_lv, 0)
 
     # conext Lhoods
@@ -289,7 +299,7 @@ def build_sin_and_np_elbo_graphs2(vid_batch, beta, lt=5, context_ratio=0.5):
     sin_elbo_ce = tf.reduce_sum(sin_elbo_ce, 2) # (batch, tmax)
 
 
-    np_elbo_ce = [tf.gather(sin_elbo_ce[i,:], tar_ind[i,:]) for i in range(batch)] # (batch, con_np)
+    np_elbo_ce = [tf.gather(sin_elbo_ce[i,:], tar_ind[i,:]) for i in range(batch)] # (batch, con_tf)
     np_elbo_ce = [tf.reduce_sum(np_i) for np_i in np_elbo_ce] # list of scalars, len=batch
 
     np_elbo_ce = tf.stack(np_elbo_ce) # (batch)
@@ -314,7 +324,7 @@ def build_sin_and_np_elbo_graphs2(vid_batch, beta, lt=5, context_ratio=0.5):
                                                         logits=pred_vid_batch_logits)
     sin_elbo_recon = tf.reduce_sum(-recon_err, (2,3)) # (batch, tmax)
 
-    np_elbo_recon = [tf.gather(sin_elbo_recon[i,:], tar_ind[i,:]) for i in range(batch)] # (batch, con_np)
+    np_elbo_recon = [tf.gather(sin_elbo_recon[i,:], tar_ind[i,:]) for i in range(batch)] # (batch, con_tf)
     np_elbo_recon = [tf.reduce_sum(np_i) for np_i in np_elbo_recon]
 
     # finally the reconstruction error for each objective!
