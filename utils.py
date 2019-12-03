@@ -192,7 +192,7 @@ def MSE_rotation(X, Y, VX=None):
         W: nparray (2, 2)
         B: nparray (2, 1)
         MSE: ||X_rot - Y||^2
-        VX_rot: rotated cov matrices
+        VX_rot: rotated cov matrices (default zeros)
     """
 
     batch, tmax, _ = X.shape
@@ -342,15 +342,20 @@ def plot_latents(truevids,
     return ax
     
 
-def make_checkpoint_folder(expid=None, extra="", base_dir=None):
+def make_checkpoint_folder(base_dir, expid=None, extra=""):
+    """
+    Makes a folder and sub folders for pics and results
+    Args:
+        base_dir: the root directory where new folder will be made
+        expid: optional extra sub dir inside base_dir
+    """
 
     # make a "root" dir to store all checkpoints
-    if base_dir is None:
-        homedir = os.getenv("HOME")
-        base_dir = homedir+"/GPVAE_checkpoints/"
+    # homedir = os.getenv("HOME")
+    # base_dir = homedir+"/GPVAE_checkpoints/"
 
     if expid is not None:
-        base_dir = base_dir + expid + "/"
+        base_dir = base_dir + "/" + expid + "/"
 
     if not os.path.exists(base_dir):
         os.makedirs(base_dir)
@@ -378,7 +383,7 @@ def make_checkpoint_folder(expid=None, extra="", base_dir=None):
     # source code
     src_folder = checkpoint_folder + "/sourcecode/"
     os.makedirs(src_folder)
-    old_src_dir = homedir + "/GPVAE/"
+    old_src_dir = os.path.dirname(os.path.abspath(__file__))
     src_files = os.listdir(old_src_dir)
     print("\n\nCopying source Code to "+src_folder)
     for f in src_files:
@@ -396,7 +401,7 @@ class pandas_res_saver:
     """
     Takes a file and a list of col names to initialise a
     pandas array. Then accepts extra rows to be added
-    and occaisionally written to disc.
+    and occasionally written to disc.
     """
     def __init__(self, res_file, colnames):
         # reload old results frame
@@ -431,6 +436,7 @@ def call_bash(cmd):
     process = sp.Popen(cmd.split(), stdout=sp.PIPE)
     output, error = process.communicate()
 
+
 def dict_to_flags(mydict):
     cmd = ""
     for k, v in mydict.items():
@@ -438,53 +444,8 @@ def dict_to_flags(mydict):
     return cmd
 
 
-def run_local_gpu_job(file='~/GPVAE/GPVAEmodel.py', flags=None, njobs=10):
-    """
-    Run the file njobs times with the flags listed in flags dicts
-    args:
-        file: str, path to file to run
-        flags: len=njobs list, each is a dict of flags
-        njobs: how many to run in parallel
-    
-    returns:
-        nothing
-    """
-
-    assert len(flags)==njobs; "params and jobs must be the same length"
-
-    call_bash('tmux new -d -s gpujob')
-    call_bash('tmux new-window -t gpujob')
-    call_bash('tmux swap-window -t gpujob:0 -s gpujob:1')
-    time.sleep(0.1)
-    call_bash('tmux kill-window -t gpujob:1')
-
-    time.sleep(0.1)
-
-
-
-    # create panes and load htop
-    for i in range(njobs):
-        if i >0:
-            sp.call(["/bin/bash", "-c", "tmux split-window -v -t gpujob"])
-            sp.call(["/bin/bash", "-c", "tmux select-layout -t gpujob tiled"])
-
-        sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob 'source ~/.bashrc' 'C-m'"])
-        sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob 'conda activate TFgpu' 'C-m'"])
-        sp.call(["/bin/bash", "-c", "tmux send-keys -t gpujob \
-            'python " + file + dict_to_flags(flags[i]) + "' 'C-m'"])
-
-        # call_bash("tmux send-keys -t gpujob 'conda activate TF' 'C-m'")
-
-        time.sleep(2)
-    
 
 if __name__=="__main__":
-
-    flags = [{'ram':0.05, 'seed':0, 'expid':'NP-stochastic-con-tar2', 'elbo':'NP'} for i in range(10)]
-    run_local_gpu_job(flags=flags)
-
-
-if __name__=="__main__0":
 
     traj, vid_batch = Make_Video_batch()
 
@@ -512,22 +473,3 @@ if __name__=="__main__0":
     plt.tight_layout()
     plt.show()
     fig = plt.gcf()
-
-if __name__=="__main__0":
-    # A = Make_Video_batch()
-
-    make_checkpoint_folder()
-
-    # graph = tf.Graph()
-    # with graph.as_default():
-
-    #     vid_g = build_video_batch_graph(batch=10)
-
-    #     with tf.Session() as sess:
-    #         for i in range(1):
-    #             # A = sess.run(vid_g)
-    # A = Make_Video_batch(batch=10)
-                # print(i)
-            
-    # print(A.shape)
-    # play_video(A)
