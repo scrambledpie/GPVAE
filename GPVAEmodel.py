@@ -535,7 +535,7 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Train GPP-VAE')
     parser.add_argument('--steps', type=int, default=50000, help='Number of steps of Adam')
     parser.add_argument('--beta0', type=float, default=1, help='initial beta annealing value')
-    parser.add_argument('--elbo', type=str, choices=['SIN', 'NP'], default='NP',
+    parser.add_argument('--elbo', type=str, choices=['SIN', 'NP'], default='SIN',
                          help='Structured Inf Nets ELBO or Neural Processes ELBO')
     parser.add_argument('--modellt', type=float, default=5, help='time scale of model to fit to data')
     parser.add_argument('--base_dir', type=str, default=default_base_dir, help='folder within a new dir is made for each run')
