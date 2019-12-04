@@ -90,38 +90,32 @@ def build_MLP_inference_graph(vid_batch, layers=[500], tftype=tf.float32):
             stddev=1.0 / np.sqrt(float(i_dims))), name="encW")
     B = tf.Variable(tf.zeros([1, 4]), name="encB")
     h0 = tf.matmul(h0, W) + B
-    # h0 = tf.nn.relu(h0)
 
     h0 = tf.reshape(h0, (batch, tmax, 4))
-    # print(h0.get_shape())
 
     q_means = h0[:, :, :2]
-    q_vars  = tf.abs(tf.exp(h0[:, :, 2:]))
+    q_vars  = tf.exp(h0[:, :, 2:])
 
-    # print(h0.get_shape())
-    # print(q_means.get_shape())
-    # print(q_vars.get_shape())
-    # import sys; sys.exit()
-
-    tf.print(q_means)
     return q_means, q_vars
 
 
 def build_MLP_decoder_graph(latent_samples, px, py, layers=[500]):
     """
-    args:
+    Constructs a TF graph that goes from latent points in 2D time series
+    to a bernoulli probabilty for each pixel in output video time series.
+    Args:
         latent_samples: (batch, tmax, 2), tf variable
         px: image width (int)
         py: image height (int)
         layers: list of num. of nodes (list of ints)
 
-    returns:
+    Returns:
         pred_batch_vid_logits: (batch, tmax, px, py) tf variable
     """
 
     batch, tmax, _ = latent_samples.get_shape()
 
-    # flatten all frames into one matrix
+    # flatten all latents into one matrix (decoded in i.i.d fashion)
     h0 = tf.reshape(latent_samples, (batch*tmax, 2))
 
     # loop over layers in given list
@@ -132,7 +126,6 @@ def build_MLP_decoder_graph(latent_samples, px, py, layers=[500]):
         B = tf.Variable(tf.zeros([1, l]), name="decB")
         h0 = tf.matmul(h0, W) + B
         h0 = tf.nn.tanh(h0)
-
 
     # final layer just outputs full video batch
     l = px*py
@@ -149,7 +142,9 @@ def build_MLP_decoder_graph(latent_samples, px, py, layers=[500]):
 
 def build_1d_gp(X, Y, varY, X_test, lt=5):
     """
-    Takes input-output dataset and returns post mean, var, marginal lhood
+    Takes input-output dataset and returns post mean, var, marginal lhood.
+    This is standard GP regression (in this application X is time, Y is 
+    recognition network means with noise as recognition netowrk variance).
 
     Args:
         X: inputs tensor (batch, npoints)
@@ -170,7 +165,6 @@ def build_1d_gp(X, Y, varY, X_test, lt=5):
 
     # inverse square length scale
     ilt = tf.constant( -0.5*(1/(lt*lt)) )
-    
     
     # lhood term 1/3
     lhood_pi_term = tf.cast(n, dtype=tf.float32) * np.log(2*np.pi)
@@ -212,7 +206,8 @@ def build_1d_gp(X, Y, varY, X_test, lt=5):
 
 def build_sin_and_np_elbo_graphs(vid_batch, beta, lt=5, context_ratio=0.5):
     """
-    Builds both standard eblo and neural process elbo. Returns pretty much everything!
+    Builds both standard (sin) eblo and neural process (np) elbo. 
+    Returns pretty much everything!
     Args:
         vid_batch: tf variable (batch, tmax, px, py) binay arrays or images
         beta: scalar, tf variable, annealing term for prior KL
@@ -236,11 +231,9 @@ def build_sin_and_np_elbo_graphs(vid_batch, beta, lt=5, context_ratio=0.5):
 
     batch, tmax, px, py = [int(s) for s in vid_batch.get_shape()]
 
-    # con_np = np.floor(context_ratio*int(tmax)).astype(int)
-    # con_tf = tf.constant( con_np , dtype=tf.int32)
     # Choose a random split of target-context for each batch
     con_tf = tf.random.normal(shape=(),
-                              mean=context_ratio*float(tmax), 
+                              mean=context_ratio*float(tmax),
                               stddev=np.sqrt(context_ratio*(1-context_ratio)*float(tmax)))
     con_tf = tf.math.maximum(con_tf, 2)
     con_tf = tf.math.minimum(con_tf, int(tmax)-2)
@@ -343,9 +336,9 @@ def build_sin_and_np_elbo_graphs(vid_batch, beta, lt=5, context_ratio=0.5):
     #####################################################################################
     ####################### PUT IT ALL TOGETHER  ########################################
 
-    sin_elbo = sin_elbo_recon + beta*sin_elbo_prior_kl
+    sin_elbo = sin_elbo_recon + beta * sin_elbo_prior_kl
     
-    np_elbo  = np_elbo_recon + beta*np_prior_kl
+    np_elbo  = np_elbo_recon + beta * np_prior_kl
 
     return sin_elbo, sin_elbo_recon, sin_elbo_prior_kl, \
            np_elbo,   np_elbo_recon,       np_prior_kl, \
@@ -369,14 +362,6 @@ def run_experiment(args):
     print("\nCheckpoint Directory:\n"+str(chkpnt_dir)+"\n")
 
 
-    # Let's get the plotty started!
-    # plt.ion()
-    # fig, ax = plt.subplots(6,3, figsize=(6, 8))
-    # # plt.show()
-    # plt.tight_layout()
-    # plt.pause(0.01)
-
-
     # Data synthesis settings
     batch = 35
     tmax = 30
@@ -386,9 +371,21 @@ def run_experiment(args):
     vid_lt = 5
     model_lt = args.modellt
 
-    # Load test batch from HDD
-    with open(os.getenv("HOME")+"/GPVAE/Test_Batches.pkl", "rb") as f:
-        Test_Batches = pickle.load(f)
+    # Load/ceate batches of reproducible videos
+    if os.path.isfile(args.base_dir + "/Test_Batches.pkl"):
+        with open(args.base_dir + "/Test_Batches.pkl", "rb") as f:
+            Test_Batches = pickle.load(f)
+    else:
+        make_batch = lambda s: Make_Video_batch(tmax=tmax, px=px, py=py, lt=vid_lt, batch=batch, seed=s, r=r)
+        Test_Batches = [make_batch(s) for s in range(10)]
+        with open(args.base_dir + "/Test_Batches.pkl", "wb") as f:
+            pickle.dump(Test_Batches, f)
+
+    
+    # Initialise a plot
+    fig, ax = plt.subplots(6,3, figsize=(6, 8))
+    plt.ion()
+
 
 
     # make sure everything is created in the same graph!
@@ -469,7 +466,7 @@ def run_experiment(args):
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.ram)
         with tf.Session(config=tf.ConfigProto(gpu_options=gpu_options)) as sess:
 
-            # Attempt a restore weights
+            # Attempt to restore weights
             try:
                 saver.restore(sess, tf.train.latest_checkpoint(chkpnt_dir))
                 print("\n\nRestored Model Weights")
@@ -492,9 +489,9 @@ def run_experiment(args):
                     test_elbo, e_rec_i, e_pkl_i = sess.run([e_elb, e_rec, e_pkl], {vid_batch:TD, beta:1.0})
                     test_qv, test_pv, test_pm, test_qm = sess.run([q_v, p_v, p_m, q_m], {vid_batch:TD, beta:1.0})
 
-                    print(str(g_s)+": elbo "+str(test_elbo)+"\t "+"\t "+str(e_rec_i)+"  "+str(e_pkl_i)+\
-                    ",\t\t qvar range:\t",str(test_pv.max()),"\t",str(test_qv.min()) ,\
-                    ",\t\t qmean range:\t",str(np.abs(test_pm).max()),"\t",str(np.abs(test_qm).max())  )
+                    print(str(g_s)+": elbo "+str(test_elbo) ) #+"\t "+"\t "+str(e_rec_i)+"  "+str(e_pkl_i)+\
+                    # ",\t\t qvar range:\t",str(test_pv.max()),"\t",str(test_qv.min()) ,\
+                    # ",\t\t qmean range:\t",str(np.abs(test_pm).max()),"\t",str(np.abs(test_qm).max())  )
 
 
                 # Save elbo, recon, priorKL....
@@ -507,19 +504,21 @@ def run_experiment(args):
                     res_saver(new_res)
 
 
-                # Save plot
-                if g_s%500==0:
-                    fig, ax = plt.subplots(6,3, figsize=(6, 8))
+                # show plot and occasionally save
+                if g_s%20==0:
+                    # [[ax_ij.clear() for ax_ij in ax_i] for ax_i in ax]
                     TT, TD = Test_Batches[0]
                     reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:TD, beta:1})
                     rp, _, MSE, rv = MSE_rotation(reconpath, TT, reconvar)
                     _ = plot_latents(TD, TT, reconvid, rp, rv, ax=ax, nplots=6)
-                    plt.tight_layout()
-                    plt.draw()
-                    # plt.show()
+                    # pltxx.tight_layout()
+                    # plt.draw()
+                    plt.show()
                     plt.pause(0.01)
-                    plt.savefig(pic_folder + str(g_s)+".pdf")
-                    plt.close(fig)
+
+                    if True: #g_s%500==0:
+                        plt.savefig(pic_folder + str(g_s)+".pdf")
+                        plt.close(fig)
 
 
                 # Save NN weights
@@ -537,7 +536,7 @@ if __name__=="__main__":
     parser.add_argument('--steps', type=int, default=50000, help='Number of steps of Adam')
     parser.add_argument('--beta0', type=float, default=1, help='initial beta annealing value')
     parser.add_argument('--elbo', type=str, choices=['SIN', 'NP'], default='NP',
-                    help='Structured Inf Nets or Neural Processes elbo')
+                         help='Structured Inf Nets ELBO or Neural Processes ELBO')
     parser.add_argument('--modellt', type=float, default=5, help='time scale of model to fit to data')
     parser.add_argument('--base_dir', type=str, default=default_base_dir, help='folder within a new dir is made for each run')
     parser.add_argument('--expid', type=str, default="debug", help='give this experiment a name')

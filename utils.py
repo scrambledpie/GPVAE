@@ -383,7 +383,7 @@ def make_checkpoint_folder(base_dir, expid=None, extra=""):
     # source code
     src_folder = checkpoint_folder + "/sourcecode/"
     os.makedirs(src_folder)
-    old_src_dir = os.path.dirname(os.path.abspath(__file__))
+    old_src_dir = os.path.dirname(os.path.abspath(__file__)) + "/"
     src_files = os.listdir(old_src_dir)
     print("\n\nCopying source Code to "+src_folder)
     for f in src_files:
