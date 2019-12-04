@@ -297,26 +297,32 @@ def plot_latents(truevids,
         A = np.arctan2(E[1][:,:,0,1], E[1][:,:,0,0])*(360/(2*np.pi))
 
     def plot_set(i):
-        # i is batch element = plot row
+        # i is batch element = plot column
 
-        # left column of plots is true data heatmap
+        # top row of plots is true data heatmap
         tv = make_heatmap(truevids[i,:,:,:])
-        ax[i][0].imshow(1-tv, origin='lower', cmap='Greys')
-        ax[i][0].axis('off')
+        ax[0][i].imshow(1-tv, origin='lower', cmap='Greys')
+        ax[0][i].axis('off')
 
-        # middle column is trajectories
-        ax[i][1].plot(truepath[i,:,0], truepath[i,:,1])
-        ax[i][1].set_xlim([xmin, xmax])
-        ax[i][1].set_ylim([ymin, ymax])
-        ax[i][1].scatter(truepath[i,-1,0], truepath[i,-1,1])
+        print("Chek 1")
+
+        # middle row is trajectories
+        ax[1][i].plot(truepath[i,:,0], truepath[i,:,1])
+        ax[1][i].set_xlim([xmin, xmax])
+        ax[1][i].set_ylim([ymin, ymax])
+        ax[1][i].scatter(truepath[i,-1,0], truepath[i,-1,1])
+
+        print("Chek 2")
 
         if reconpath is not None:
-            ax[i][1].plot(reconpath[i,:,0], reconpath[i,:,1])
-            ax[i][1].scatter(reconpath[i,-1,0], reconpath[i,-1,1])
+            ax[1][i].plot(reconpath[i,:,0], reconpath[i,:,1])
+            ax[1][i].scatter(reconpath[i,-1,0], reconpath[i,-1,1])
+            print("Chek 3")
 
         if paths is not None:
-            ax[i][1].plot(paths[i,:,0], paths[i,:,1])
-            ax[i][1].scatter(paths[i,-1,0], paths[i,-1,1])
+            ax[1][i].plot(paths[i,:,0], paths[i,:,1])
+            ax[1][i].scatter(paths[i,-1,0], paths[i,-1,1])
+            print("Chek 4")
         
         if reconvar is not None:
             ells = [Ellipse(xy=reconpath[i,t,:], 
@@ -324,20 +330,24 @@ def plot_latents(truevids,
                             height=H[i,t], 
                             angle=A[i,t]) for t in range(tmax)]
             for e in ells:
-                ax[i][1].add_artist(e)
-                e.set_clip_box(ax[i][1].bbox)
+                ax[1][i].add_artist(e)
+                e.set_clip_box(ax[1][i].bbox)
                 e.set_alpha(0.25)
                 e.set_facecolor('C1')
+            print("Chek 5")    
 
-        # right column is reconstructed video
+        # Third row is reconstructed video
         if reconvids is not None:
             rv = make_heatmap(reconvids[i,:,:,:])
-            ax[i][2].imshow(1-rv, origin='lower', cmap='Greys')
-            ax[i][2].axis('off')
+            ax[2][i].imshow(1-rv, origin='lower', cmap='Greys')
+            ax[2][i].axis('off')
+            print("Chek 6")
+    
     
     for i in range(nplots):
         plot_set(i)
     
+    print("Check 6.5")
     return ax
     
 

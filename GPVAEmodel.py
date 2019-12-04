@@ -10,6 +10,8 @@ import sys
 import time
 import pickle
 import os
+from utils_circles_grid import Make_circles, Make_squares, plot_circle
+from utils_circles_grid import plot_heatmap, plot_square
 
 
 def gauss_cross_entropy(mu1, var1, mu2, var2):
@@ -382,10 +384,13 @@ def run_experiment(args):
             pickle.dump(Test_Batches, f)
 
     
-    # Initialise a plot
-    fig, ax = plt.subplots(6,3, figsize=(4, 8), constrained_layout=True)
+    # Initialise a plots
+    # this plot displays a  batch of videos + latents + reconstructions
+    fig, ax = plt.subplots(4,4, figsize=(8, 8), constrained_layout=True)
     plt.ion()
 
+    truth_c, V_c = Make_circles(); batch_V_c = np.tile(V_c, (batch,1,1,1))
+    truth_sq, V_sq = Make_squares(); batch_V_sq = np.tile(V_sq, (batch,1,1,1))
 
 
     # make sure everything is created in the same graph!
@@ -510,17 +515,26 @@ def run_experiment(args):
                     TT, TD = Test_Batches[0]
                     reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:TD, beta:1})
                     rp, _, MSE, rv = MSE_rotation(reconpath, TT, reconvar)
-                    _ = plot_latents(TD, TT, reconvid, rp, rv, ax=ax, nplots=6)
+                    _ = plot_latents(TD, TT, reconvid, rp, rv, ax=ax, nplots=4)
                     # plt.tight_layout()
-                    # plt.draw()
+                    print("Chek 7")
+                    plt.draw()
                     fig.suptitle(str(g_s)+' ELBO: ' + str(test_elbo))
-                    plt.show()
-                    plt.pause(0.01)
 
                     if True: #g_s%500==0:
                         plt.savefig(pic_folder + str(g_s).zfill(6)+".png")
                         # plt.close(fig)
+                    
+                    q_m_c = sess.run(q_m,{vid_batch: batch_V_c})
+                    q_m_sq = sess.run(q_m, {vid_batch: batch_V_sq})
 
+                    # import pdb; pdb.set_trace()
+
+                    plot_circle(ax[3][0], ax[3][1], q_m_c)
+                    plot_square(ax[3][2], ax[3][3], q_m_sq)
+
+                    plt.show()
+                    plt.pause(0.01)
 
                 # Save NN weights
                 if g_s%1000==0:

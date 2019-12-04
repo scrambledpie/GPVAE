@@ -89,7 +89,7 @@ def Make_circles(px=32, py=32, r=3):
     return traj, V_c
 
 
-def plot_circle(traj0, ax, qnet_mu=None):
+def plot_circle(ax1, ax, qnet_mu=None):
     """
     Plots two circles of points
     Args:
@@ -97,6 +97,10 @@ def plot_circle(traj0, ax, qnet_mu=None):
         ax: matplotlib axes object to plot onto
         qnet_mu: predicted latents (batch, tmax, 2)
     """
+
+
+    ax.clear()
+    ax1.clear()
     
     ax.tick_params(
     axis='both',          # changes apply to the x-axis
@@ -107,7 +111,11 @@ def plot_circle(traj0, ax, qnet_mu=None):
     right=False,
     labelleft=False,
     labelbottom=False)
+
+    traj0, V_c = Make_circles()
         
+    plot_heatmap(V_c[0,:,:,:], ax1)
+
     ax.scatter(traj0[:,0],traj0[:,1],color='blue')
 
     ax.plot(traj0[1:9,0], traj0[1:9,1], color='blue')
@@ -121,7 +129,9 @@ def plot_circle(traj0, ax, qnet_mu=None):
     ax.plot(t_x2, t_y2, color='blue')
     
     if qnet_mu is not None:
-        rot_qnet, _, _, _ = MSE_rotation(qnet_mu[:,:19], traj0[None, :19,:])
+
+        # import pdb; pdb.set_trace()
+        rot_qnet, _, _, _ = MSE_rotation(qnet_mu[:1,:19,:], traj0[None, :19,:])
         ax.scatter(rot_qnet[0,:,0],rot_qnet[0,:,1],color= 'orange', zorder=10)
             
         ax.plot(rot_qnet[0,1:9,0], rot_qnet[0,1:9,1], color='orange', zorder=10)
@@ -152,7 +162,7 @@ def Make_squares(px=32, py=32, r=3):
     return sq_tr, V_sq
 
 
-def plot_square(sq_tr, ax, q_sq=None):
+def plot_square(ax0, ax, q_sq=None):
     """
     Plots a lattice of points, true and predicted latents.
     Args:
@@ -161,6 +171,13 @@ def plot_square(sq_tr, ax, q_sq=None):
         ax: axes to plot onto
     """
 
+    ax0.clear()
+    ax.clear()
+
+
+    sq_tr, V_sq = Make_squares()
+
+    plot_heatmap(V_sq[0,:,:,:], ax0)
 
     ax.scatter(sq_tr[:,0], sq_tr[:,1], color='blue')
 
@@ -187,7 +204,7 @@ def plot_square(sq_tr, ax, q_sq=None):
             ax.plot(dx, dy, color='blue')
 
     if q_sq is not None:            
-        rot_qsq, _, _, _ = MSE_rotation(q_sq[:,:25], sq_tr[None, :25,:])
+        rot_qsq, _, _, _ = MSE_rotation(q_sq[:1,:25,:], sq_tr[None, :25,:])
         rot_qsq = rot_qsq[0, :, :]
         ax.scatter(rot_qsq[:, 0],rot_qsq[:, 1], color='orange', zorder=10)
         for i in range(5):
@@ -212,8 +229,8 @@ if __name__=="__main__":
 
     # import pdb; pdb.set_trace()
 
-    plot_heatmap(V_c[0,:,:,:], ax[0][0])
-    plot_heatmap(V_sq[0,:,:,:], ax[1][0])
+    # plot_heatmap(V_c[0,:,:,:], ax[0][0])
+    # plot_heatmap(V_sq[0,:,:,:], ax[1][0])
 
     q_sq = xy_sq + 0.1*np.random.normal(size=xy_sq.shape)
     q_sq = q_sq[None, :, :]
@@ -221,8 +238,10 @@ if __name__=="__main__":
     q_c = xy_c + 0.1*np.random.normal(size=xy_c.shape)
     q_c = q_c[None, :,:]
 
-    plot_circle(xy_c, ax[0][1], q_c)
-    plot_square(xy_sq, ax[1][1], q_sq)
+    # plot_circle(xy_c, ax[0][1], q_c)
+    # plot_square(xy_sq, ax[1][1], q_sq)
 
+    plot_circle(ax[0][0], ax[0][1], q_c)
+    plot_square(ax[1][0], ax[1][1], q_sq)
 
     plt.show()
