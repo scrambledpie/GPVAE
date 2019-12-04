@@ -106,7 +106,6 @@ def Make_Video_batch(tmax=50,
 
     return traj0, vid_batch
 
-
 def play_video(vid_batch, j=0):
     """
     vid_batch: batch*tmax*px*py batch of videos

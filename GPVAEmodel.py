@@ -383,7 +383,7 @@ def run_experiment(args):
 
     
     # Initialise a plot
-    fig, ax = plt.subplots(6,3, figsize=(6, 8))
+    fig, ax = plt.subplots(6,3, figsize=(4, 8), constrained_layout=True)
     plt.ion()
 
 
@@ -511,14 +511,15 @@ def run_experiment(args):
                     reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:TD, beta:1})
                     rp, _, MSE, rv = MSE_rotation(reconpath, TT, reconvar)
                     _ = plot_latents(TD, TT, reconvid, rp, rv, ax=ax, nplots=6)
-                    # pltxx.tight_layout()
+                    # plt.tight_layout()
                     # plt.draw()
+                    fig.suptitle(str(g_s)+' ELBO: ' + str(test_elbo))
                     plt.show()
                     plt.pause(0.01)
 
                     if True: #g_s%500==0:
-                        plt.savefig(pic_folder + str(g_s)+".pdf")
-                        plt.close(fig)
+                        plt.savefig(pic_folder + str(g_s).zfill(6)+".png")
+                        # plt.close(fig)
 
 
                 # Save NN weights
