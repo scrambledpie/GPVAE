@@ -89,7 +89,7 @@ def Make_circles(px=32, py=32, r=3):
     return traj, V_c
 
 
-def plot_circle(ax1, ax, qnet_mu=None):
+def plot_circle(ax1, ax, rot_qnet=None):
     """
     Plots two circles of points
     Args:
@@ -128,20 +128,20 @@ def plot_circle(ax1, ax, qnet_mu=None):
     t_y2 = np.array([traj0[9,1], traj0[18,1]])
     ax.plot(t_x2, t_y2, color='blue')
     
-    if qnet_mu is not None:
+    if rot_qnet is not None:
 
         # import pdb; pdb.set_trace()
-        rot_qnet, _, _, _ = MSE_rotation(qnet_mu[:1,:19,:], traj0[None, :19,:])
-        ax.scatter(rot_qnet[0,:,0],rot_qnet[0,:,1],color= 'orange', zorder=10)
+        # rot_qnet, _, _, _ = MSE_rotation(qnet_mu[:1,:19,:], traj0[None, :19,:])
+        ax.scatter(rot_qnet[:,0],rot_qnet[:,1],color= 'orange', zorder=10)
             
-        ax.plot(rot_qnet[0,1:9,0], rot_qnet[0,1:9,1], color='orange', zorder=10)
-        q_x1 = np.array([rot_qnet[0,1,0], rot_qnet[0,8,0]])
-        q_y1 = np.array([rot_qnet[0,1,1], rot_qnet[0,8,1]])
+        ax.plot(rot_qnet[1:9,0], rot_qnet[1:9,1], color='orange', zorder=10)
+        q_x1 = np.array([rot_qnet[1,0], rot_qnet[8,0]])
+        q_y1 = np.array([rot_qnet[1,1], rot_qnet[8,1]])
         ax.plot(q_x1, q_y1, color='orange', zorder=10)
 
-        ax.plot(rot_qnet[0,9:19,0], rot_qnet[0,9:19,1],color='orange', zorder=10)
-        q_x2 = np.array([rot_qnet[0,9,0], rot_qnet[0,18,0]])
-        q_y2 = np.array([rot_qnet[0,9,1], rot_qnet[0,18,1]])
+        ax.plot(rot_qnet[9:19,0], rot_qnet[9:19,1],color='orange', zorder=10)
+        q_x2 = np.array([rot_qnet[9,0], rot_qnet[18,0]])
+        q_y2 = np.array([rot_qnet[9,1], rot_qnet[18,1]])
         ax.plot(q_x2, q_y2, color='orange', zorder=10)
 
 
@@ -162,7 +162,7 @@ def Make_squares(px=32, py=32, r=3):
     return sq_tr, V_sq
 
 
-def plot_square(ax0, ax, q_sq=None):
+def plot_square(ax0, ax, rot_qsq=None):
     """
     Plots a lattice of points, true and predicted latents.
     Args:
@@ -203,9 +203,9 @@ def plot_square(ax0, ax, q_sq=None):
             dy = np.array( [sq_tr[j+5*i, 1], sq_tr[1+j+5*i, 1]] )
             ax.plot(dx, dy, color='blue')
 
-    if q_sq is not None:            
-        rot_qsq, _, _, _ = MSE_rotation(q_sq[:1,:25,:], sq_tr[None, :25,:])
-        rot_qsq = rot_qsq[0, :, :]
+    if rot_qsq is not None:            
+        # rot_qsq, _, _, _ = MSE_rotation(q_sq[:1,:25,:], sq_tr[None, :25,:])
+        rot_qsq = rot_qsq[:, :]
         ax.scatter(rot_qsq[:, 0],rot_qsq[:, 1], color='orange', zorder=10)
         for i in range(5):
             for j in range(4):

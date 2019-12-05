@@ -514,17 +514,26 @@ def run_experiment(args):
                     # [[ax_ij.clear() for ax_ij in ax_i] for ax_i in ax]
                     TT, TD = Test_Batches[0]
                     reconpath, reconvar, reconvid = sess.run([p_m, p_v, pred_vid], {vid_batch:TD, beta:1})
-                    rp, _, MSE, rv = MSE_rotation(reconpath, TT, reconvar)
+                    rp, W, MSE, rv = MSE_rotation(reconpath, TT, reconvar)
                     _ = plot_latents(TD, TT, reconvid, rp, rv, ax=ax, nplots=4)
                     # plt.tight_layout()
                     plt.draw()
                     fig.suptitle(str(g_s)+' ELBO: ' + str(test_elbo))
+
+
                     
                     q_m_c = sess.run(q_m,{vid_batch: batch_V_c})
                     q_m_sq = sess.run(q_m, {vid_batch: batch_V_sq})
 
-                    plot_circle(ax[3][0], ax[3][1], q_m_c)
-                    plot_square(ax[3][2], ax[3][3], q_m_sq)
+                    # import pdb; pdb.set_trace()
+
+                    q_m_c = np.hstack([ q_m_c[0,:,:], np.ones((30, 1))])
+                    rot_qnet_c = np.matmul(q_m_c, W)
+                    plot_circle(ax[3][0], ax[3][1], rot_qnet_c)
+
+                    q_m_sq = np.hstack([ q_m_sq[0,:,:], np.ones((30, 1))])
+                    rot_qnet_sq = np.matmul(q_m_sq, W)
+                    plot_square(ax[3][2], ax[3][3], rot_qnet_sq)
 
                     plt.show()
                     plt.pause(0.01)
