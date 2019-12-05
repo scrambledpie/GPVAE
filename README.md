@@ -1,5 +1,11 @@
 # Gaussian Process Prior VAE for Latent Dynamics from Pixels
 
+Blog Post:
+https://scrambledpie.github.io/jekyll/update/2019/12/04/Gaussian-Process-Prior_VAE-for-Interpretable-Latent-Dynamics-from-Pixels.html
+
+Paper:
+https://scrambledpie.github.io/Pics/GPVAE/AABI2019(10).pdf
+
 Watch the GP-VAE training and learning to untangle the latent space (click on pic)
 
 [![Training GP-VAE](https://github.com/scrambledpie/GPVAE/blob/master/026040.png)](https://www.youtube.com/watch?v=riVhb6K_iMo)
