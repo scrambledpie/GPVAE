@@ -1,6 +1,6 @@
 # Gaussian Process Prior VAE for Latent Dynamics from Pixels
 
-Watch the GP-VAE training and learning to untangle the latent space
+Watch the GP-VAE training and learning to untangle the latent space (click on pic)
 
 [![Training GP-VAE](https://github.com/scrambledpie/GPVAE/blob/master/026040.png)](https://www.youtube.com/watch?v=riVhb6K_iMo)
 
