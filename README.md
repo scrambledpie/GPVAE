@@ -8,8 +8,10 @@ Get the repo:
 ```git clone https://github.com/scrambledpie/GPVAE.git```
 
 Then run the main file:
-```cd GPVAE 
-python GPVAEmodel.py```
+```
+cd GPVAE 
+python GPVAEmodel.py
+```
 
 This will train the GP-VAE from scratch using the standard ELBO. All output (checkpoints, plots, training metrics, source code) is stored in a new subdirectory ```debug/(unique run name)```.
 
