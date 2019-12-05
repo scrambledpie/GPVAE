@@ -2,7 +2,7 @@
 
 Watch the GP-VAE training and learning to untangle the latent space
 
-[![Training GP-VAE](https://img.youtube.com/vi/riVhb6K_iMo/0.jpg)](https://www.youtube.com/watch?v=riVhb6K_iMo)
+[![Training GP-VAE](https://github.com/scrambledpie/GPVAE/blob/master/026040.png)](https://www.youtube.com/watch?v=riVhb6K_iMo)
 
 
 Code to reproduce plots and experiments in the paper "Gaussian Process Prior VAE for Latent Dynamics from Pixels" presented at 2nd Symposioum on Advances in Approximate Bayesian Inference 2019.
