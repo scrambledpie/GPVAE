@@ -517,24 +517,19 @@ def run_experiment(args):
                     rp, _, MSE, rv = MSE_rotation(reconpath, TT, reconvar)
                     _ = plot_latents(TD, TT, reconvid, rp, rv, ax=ax, nplots=4)
                     # plt.tight_layout()
-                    print("Chek 7")
                     plt.draw()
                     fig.suptitle(str(g_s)+' ELBO: ' + str(test_elbo))
-
-                    if True: #g_s%500==0:
-                        plt.savefig(pic_folder + str(g_s).zfill(6)+".png")
-                        # plt.close(fig)
                     
                     q_m_c = sess.run(q_m,{vid_batch: batch_V_c})
                     q_m_sq = sess.run(q_m, {vid_batch: batch_V_sq})
-
-                    # import pdb; pdb.set_trace()
 
                     plot_circle(ax[3][0], ax[3][1], q_m_c)
                     plot_square(ax[3][2], ax[3][3], q_m_sq)
 
                     plt.show()
                     plt.pause(0.01)
+                    if True: #g_s%500==0:
+                        plt.savefig(pic_folder + str(g_s).zfill(6)+".png")
 
                 # Save NN weights
                 if g_s%1000==0:

@@ -304,7 +304,6 @@ def plot_latents(truevids,
         ax[0][i].imshow(1-tv, origin='lower', cmap='Greys')
         ax[0][i].axis('off')
 
-        print("Chek 1")
 
         # middle row is trajectories
         ax[1][i].plot(truepath[i,:,0], truepath[i,:,1])
@@ -312,17 +311,14 @@ def plot_latents(truevids,
         ax[1][i].set_ylim([ymin, ymax])
         ax[1][i].scatter(truepath[i,-1,0], truepath[i,-1,1])
 
-        print("Chek 2")
 
         if reconpath is not None:
             ax[1][i].plot(reconpath[i,:,0], reconpath[i,:,1])
             ax[1][i].scatter(reconpath[i,-1,0], reconpath[i,-1,1])
-            print("Chek 3")
 
         if paths is not None:
             ax[1][i].plot(paths[i,:,0], paths[i,:,1])
             ax[1][i].scatter(paths[i,-1,0], paths[i,-1,1])
-            print("Chek 4")
         
         if reconvar is not None:
             ells = [Ellipse(xy=reconpath[i,t,:], 
@@ -334,20 +330,17 @@ def plot_latents(truevids,
                 e.set_clip_box(ax[1][i].bbox)
                 e.set_alpha(0.25)
                 e.set_facecolor('C1')
-            print("Chek 5")    
 
         # Third row is reconstructed video
         if reconvids is not None:
             rv = make_heatmap(reconvids[i,:,:,:])
             ax[2][i].imshow(1-rv, origin='lower', cmap='Greys')
             ax[2][i].axis('off')
-            print("Chek 6")
     
     
     for i in range(nplots):
         plot_set(i)
     
-    print("Check 6.5")
     return ax
     
 
