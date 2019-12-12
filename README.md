@@ -26,7 +26,7 @@ python GPVAEmodel.py
 
 This will train the GP-VAE from scratch using the standard ELBO derived for this problem (code also support Neural Process ELBO). All output (checkpoints, plots, training metrics, source code) is stored in a new subdirectory ```GPVAE/debug/(unique run name)```.
 
-If you want to make a video out of the training images, navigate to the pics folder and type
+If you want to make a video out of the training images, (tested on ubuntu with ffmpeg installed) navigate to the pics folder and type
 ```
 ffmpeg -pattern_type glob -i "*.png" -r 5 -pix_fmt yuv420p training.mp4
 ```
